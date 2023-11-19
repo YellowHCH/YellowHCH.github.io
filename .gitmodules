@@ -1,3 +1,9 @@
 [submodule "chhuang_blogs/themes/nostyleplease"]
 	path = chhuang_blogs/themes/nostyleplease
 	url = https://github.com/g-hw/hugo-theme-nostyleplease.git
+[submodule "chhuang_blogs/themes/beautifulhugo"]
+	path = chhuang_blogs/themes/beautifulhugo
+	url = https://github.com/halogenica/beautifulhugo.git
+[submodule "chhuang_blogs/themes/hugo-theme-den"]
+	path = chhuang_blogs/themes/hugo-theme-den
+	url = https://github.com/pseudoyu/hugo-theme-den
