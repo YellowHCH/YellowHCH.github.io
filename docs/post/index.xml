@@ -1,178 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Posts on Beautiful Hugo</title>
+    <title>Posts on ChenhuiHuang&#39;s Blog</title>
     <link>https://yellowhch.github.io/post/</link>
-    <description>Recent content in Posts on Beautiful Hugo</description>
+    <description>Recent content in Posts on ChenhuiHuang&#39;s Blog</description>
     <generator>Hugo -- gohugo.io</generator>
-    <managingEditor>youremail@domain.com (Some Person)</managingEditor>
-    <webMaster>youremail@domain.com (Some Person)</webMaster>
-    <lastBuildDate>Sun, 19 Nov 2023 15:18:27 +0800</lastBuildDate>
+    <managingEditor>ch_huang@zju.edu.cn (Chenhui Huang)</managingEditor>
+    <webMaster>ch_huang@zju.edu.cn (Chenhui Huang)</webMaster>
+    <lastBuildDate>Fri, 15 Dec 2023 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="https://yellowhch.github.io/post/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
-      <title>Test Blogs</title>
-      <link>https://yellowhch.github.io/posts/test-blogs/</link>
-      <pubDate>Sun, 19 Nov 2023 15:18:27 +0800</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/posts/test-blogs/</guid>
-      <description>gfjdsn vds
-vdfsv  fcdsa vds  cdvd</description>
-    </item>
-    
-    <item>
-      <title>Photoswipe Gallery Sample</title>
-      <link>https://yellowhch.github.io/post/2017-03-20-photoswipe-gallery-sample/</link>
-      <pubDate>Mon, 20 Mar 2017 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2017-03-20-photoswipe-gallery-sample/</guid>
-      <description>&lt;p&gt;Beautiful Hugo adds a few custom shortcodes created by &lt;a href=&#34;https://www.liwen.id.au/heg/&#34;&gt;Li-Wen Yip&lt;/a&gt; and &lt;a href=&#34;https://github.com/GjjvdBurg/HugoPhotoSwipe&#34;&gt;Gert-Jan van den Berg&lt;/a&gt; for making galleries with &lt;a href=&#34;https://photoswipe.com&#34;&gt;PhotoSwipe&lt;/a&gt; .&lt;/p&gt;
-
-
-
-&lt;div class=&#34;gallery caption-position-bottom caption-effect-fade hover-effect-zoom hover-transition&#34; itemscope itemtype=&#34;http://schema.org/ImageGallery&#34;&gt;
-	  
-  
-&lt;link rel=&#34;stylesheet&#34; href=&#34;https://yellowhch.github.io/css/hugo-easy-gallery.css&#34; /&gt;
-&lt;div class=&#34;box&#34; &gt;
-  &lt;figure  itemprop=&#34;associatedMedia&#34; itemscope itemtype=&#34;http://schema.org/ImageObject&#34;&gt;
-    &lt;div class=&#34;img&#34; style=&#34;background-image: url(&#39;https://yellowhch.github.io/img/hexagon-thumb.jpg&#39;);&#34;&gt;
-      &lt;img itemprop=&#34;thumbnail&#34; src=&#34;https://yellowhch.github.io/img/hexagon-thumb.jpg&#34; alt=&#34;/img/hexagon-thumb.jpg&#34;/&gt;
-    &lt;/div&gt;
-    &lt;a href=&#34;https://yellowhch.github.io/img/hexagon.jpg&#34; itemprop=&#34;contentUrl&#34;&gt;&lt;/a&gt;
-  &lt;/figure&gt;
-&lt;/div&gt;
-
-  
-
-&lt;div class=&#34;box&#34; &gt;
-  &lt;figure  itemprop=&#34;associatedMedia&#34; itemscope itemtype=&#34;http://schema.org/ImageObject&#34;&gt;
-    &lt;div class=&#34;img&#34; style=&#34;background-image: url(&#39;https://yellowhch.github.io/img/sphere-thumb.jpg&#39;);&#34;&gt;
-      &lt;img itemprop=&#34;thumbnail&#34; src=&#34;https://yellowhch.github.io/img/sphere-thumb.jpg&#34; alt=&#34;Sphere&#34;/&gt;
-    &lt;/div&gt;
-    &lt;a href=&#34;https://yellowhch.github.io/img/sphere.jpg&#34; itemprop=&#34;contentUrl&#34;&gt;&lt;/a&gt;
-      &lt;figcaption&gt;
-          &lt;p&gt;Sphere&lt;/p&gt;
-      &lt;/figcaption&gt;
-  &lt;/figure&gt;
-&lt;/div&gt;
-
-  
-
-&lt;div class=&#34;box&#34; &gt;
-  &lt;figure  itemprop=&#34;associatedMedia&#34; itemscope itemtype=&#34;http://schema.org/ImageObject&#34;&gt;
-    &lt;div class=&#34;img&#34; style=&#34;background-image: url(&#39;https://yellowhch.github.io/img/triangle-thumb.jpg&#39;);&#34;&gt;
-      &lt;img itemprop=&#34;thumbnail&#34; src=&#34;https://yellowhch.github.io/img/triangle-thumb.jpg&#34; alt=&#34;This is a long comment about a triangle&#34;/&gt;
-    &lt;/div&gt;
-    &lt;a href=&#34;https://yellowhch.github.io/img/triangle.jpg&#34; itemprop=&#34;contentUrl&#34;&gt;&lt;/a&gt;
-      &lt;figcaption&gt;
-          &lt;p&gt;Triangle&lt;/p&gt;
-      &lt;/figcaption&gt;
-  &lt;/figure&gt;
-&lt;/div&gt;
-
-
-&lt;/div&gt;</description>
-    </item>
-    
-    <item>
-      <title>Big Image Sample</title>
-      <link>https://yellowhch.github.io/post/2017-03-07-bigimg-sample/</link>
-      <pubDate>Tue, 07 Mar 2017 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2017-03-07-bigimg-sample/</guid>
-      <description>&lt;p&gt;The image banners at the top of the page are refered to as &amp;ldquo;bigimg&amp;rdquo; in this theme. They are optional, and one more more can be specified. If more than one is specified, the images rotate every 10 seconds. In the front matter, bigimgs are specified using an array of hashes.&lt;/p&gt;</description>
-    </item>
-    
-    <item>
-      <title>Math Sample</title>
-      <link>https://yellowhch.github.io/post/2017-03-05-math-sample/</link>
-      <pubDate>Sun, 05 Mar 2017 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2017-03-05-math-sample/</guid>
-      <description>&lt;p&gt;KaTeX can be used to generate complex math formulas server-side.&lt;/p&gt;
-&lt;p&gt;$$
-\phi = \frac{(1+\sqrt{5})}{2} = 1.6180339887\cdots
-$$&lt;/p&gt;
-&lt;p&gt;Additional details can be found on &lt;a href=&#34;https://github.com/KaTeX/KaTeX&#34;&gt;GitHub&lt;/a&gt; or on the &lt;a href=&#34;https://katex.org/&#34;&gt;project homepage&lt;/a&gt;.&lt;/p&gt;</description>
-    </item>
-    
-    <item>
-      <title>Code Sample</title>
-      <link>https://yellowhch.github.io/post/2016-03-08-code-sample/</link>
-      <pubDate>Tue, 08 Mar 2016 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2016-03-08-code-sample/</guid>
-      <description>&lt;p&gt;The following are two code samples using syntax highlighting.&lt;/p&gt;</description>
-    </item>
-    
-    <item>
-      <title>Flake it till you make it</title>
-      <link>https://yellowhch.github.io/post/2015-02-26-flake-it-till-you-make-it/</link>
-      <pubDate>Thu, 26 Feb 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-02-26-flake-it-till-you-make-it/</guid>
-      <description>Under what circumstances should we step off a path? When is it essential that we finish what we start? If I bought a bag of peanuts and had an allergic reaction, no one would fault me if I threw it out. If I ended a relationship with a woman who hit me, no one would say that I had a commitment problem. But if I walk away from a seemingly secure route because my soul has other ideas, I am a flake?</description>
-    </item>
-    
-    <item>
-      <title>Test markdown</title>
-      <link>https://yellowhch.github.io/post/2015-02-20-test-markdown/</link>
-      <pubDate>Fri, 20 Feb 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-02-20-test-markdown/</guid>
-      <description>You can write regular markdown here and Hugo will automatically convert it to a nice webpage. I strongly encourage you to take 5 minutes to learn how to write in markdown - it&amp;rsquo;ll teach you how to transform regular text into bold/italics/headings/tables/etc.
-Here is some bold text
-Here is a secondary heading Here&amp;rsquo;s a useless table:
-   Number Next number Previous number     Five Six Four   Ten Eleven Nine   Seven Eight Six   Two Three One    How about a yummy crepe?</description>
-    </item>
-    
-    <item>
-      <title>To be</title>
-      <link>https://yellowhch.github.io/post/2015-02-13-hamlet-monologue/</link>
-      <pubDate>Fri, 13 Feb 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-02-13-hamlet-monologue/</guid>
-      <description>To be, or not to be&amp;ndash;that is the question: Whether &amp;lsquo;tis nobler in the mind to suffer The slings and arrows of outrageous fortune Or to take arms against a sea of troubles And by opposing end them. To die, to sleep&amp;ndash; No more&amp;ndash;and by a sleep to say we end The heartache, and the thousand natural shocks That flesh is heir to. &amp;lsquo;Tis a consummation Devoutly to be wished. To die, to sleep&amp;ndash; To sleep&amp;ndash;perchance to dream: ay, there&amp;rsquo;s the rub, For in that sleep of death what dreams may come When we have shuffled off this mortal coil, Must give us pause.</description>
-    </item>
-    
-    <item>
-      <title>Dear diary</title>
-      <link>https://yellowhch.github.io/post/2015-01-27-dear-diary/</link>
-      <pubDate>Tue, 27 Jan 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-01-27-dear-diary/</guid>
-      <description>What is it with that Mary girl? Dragging me to school every day. As if I had a choice. What you don&amp;rsquo;t hear in those nursery rhymes is that she starves me if I don&amp;rsquo;t go to school with her; it&amp;rsquo;s the only way I can stay alive! I&amp;rsquo;m thinking about being adopted by Little Bo Peep, sure I may get lost, but anything is better than being with Mary and those little brats at school (shudder, shudder).</description>
-    </item>
-    
-    <item>
-      <title>Soccer</title>
-      <link>https://yellowhch.github.io/post/2015-01-19-soccer/</link>
-      <pubDate>Mon, 19 Jan 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-01-19-soccer/</guid>
-      <description>From Wikipedia:
-Association football, more commonly known as football or soccer,[2] is a sport played between two teams of eleven players with a spherical ball. It is played by 250 million players in over 200 countries, making it the world&amp;rsquo;s most popular sport.[3][4][5][6] The game is played on a rectangular field with a goal at each end. The object of the game is to score by getting the ball into the opposing goal.</description>
-    </item>
-    
-    <item>
-      <title>Pirates arrrr</title>
-      <link>https://yellowhch.github.io/post/2015-01-15-pirates/</link>
-      <pubDate>Thu, 15 Jan 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-01-15-pirates/</guid>
-      <description>Piracy is typically an act of robbery or criminal violence at sea. The term can include acts committed on land, in the air, or in other major bodies of water or on a shore. It does not normally include crimes committed against persons traveling on the same vessel as the perpetrator (e.g. one passenger stealing from others on the same vessel). The term has been used throughout history to refer to raids across land borders by non-state agents.</description>
-    </item>
-    
-    <item>
-      <title>First post!</title>
-      <link>https://yellowhch.github.io/post/2015-01-04-first-post/</link>
-      <pubDate>Mon, 05 Jan 2015 00:00:00 +0000</pubDate>
-      <author>youremail@domain.com (Some Person)</author>
-      <guid>https://yellowhch.github.io/post/2015-01-04-first-post/</guid>
-      <description>This is my first post, how exciting!</description>
+      <title>Analysis triton tutorial matmul L2 cache optimization</title>
+      <link>https://yellowhch.github.io/post/analysis-triton-tutorial-matmul-opt-l2cache/</link>
+      <pubDate>Fri, 15 Dec 2023 00:00:00 +0000</pubDate>
+      <author>ch_huang@zju.edu.cn (Chenhui Huang)</author>
+      <guid>https://yellowhch.github.io/post/analysis-triton-tutorial-matmul-opt-l2cache/</guid>
+      <description>Ref to triton tutorial
+ triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高基于GPU 缓存的data reuse。 在GPU架构中，L1 cache是SM内的，L2 cache是全局的，所以基于L1的优化是triton compiler的事情，L2是用户去考虑的。 基于triton的mm的伪代码 实现如下：
+# Do in parallel for m in range(0, M, BLOCK_SIZE_M): # Do in parallel for n in range(0, N, BLOCK_SIZE_N): acc = zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=float32) for k in range(0, K, BLOCK_SIZE_K): a = A[m : m+BLOCK_SIZE_M, k : k+BLOCK_SIZE_K] b = B[k : k+BLOCK_SIZE_K, n : n+BLOCK_SIZE_N] acc += dot(a, b) C[m : m+BLOCK_SIZE_M, n : n+BLOCK_SIZE_N] = acc 逻辑上每个CTA的执行是并行的，但实际上，每个CTA都会放在SM上执行，物理上不一定是完全并行的，因此CTA的排布（执行编号）可能会影响cache hit（试想，如果某时刻SMs上的CTA从完全不同的RAM中读数据，那么cache miss是会很严重，因此起不到data reuse的效果；反之，如果SMs之间会读取相同的内存块，那么cache hit就会提高，不用频繁从RAM中读数据）。 为方便分析，不妨假设SM数量为9，对于一个分块后tile_m=tile_n=9的mm，同时会有9个CTA在SM上执行，即同时计算C的9个blocks，最简单的CTA layout是根据raw-major去排布，如下代码所示：</description>
     </item>
     
   </channel>
