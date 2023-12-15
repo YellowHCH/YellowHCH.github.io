@@ -291,11 +291,11 @@
 <span class="n">pid_m</span> <span class="o">=</span> <span class="n">pid</span> <span class="o">/</span> <span class="n">grid_n</span><span class="p">;</span>
 <span class="n">pid_n</span> <span class="o">=</span> <span class="n">pid</span> <span class="o">%</span> <span class="n">grid_n</span><span class="p">;</span>
 </code></pre></div><p>pid 是CTA的编号，往往也是SM调度的顺序。pid_m和pid_n是当前编号pid的CTA对应的需要计算的block，其效果如下图：</p>
-<p><img src="images/mm-l2cache-00.png" alt="image"></p>
+<p><img src="/images/mm-l2cache-00.png" alt="image"></p>
 <p>即CTA的layout（CTA与block的映射关系）是行主序的。为了计算C的9个block，如果没有cache，那么需要load A的9个block 9次，B的9个block 9次，即一共load 162次 block。但因为有 L2 cache，SM从A中访问的是相同内存，所以会复用cache的数据，所以实际对A的9个block只从global memory 读了一次，但不同SM从B中读的blocks都是不同的，无法利用L2 cache，所以需要从B中读81个block，AB合计读90个block。
 为了提高L2 cache hit rate，容易想到调整当前9个CTA对应的layout，尽量提高cache hit。
 triton教程介绍的是名为 <strong>Grouped ordering</strong> 的排布方式，如下图所示:</p>
-<p><img src="images/mm-l2cache-01.png" alt="image"></p>
+<p><img src="/images/mm-l2cache-01.png" alt="image"></p>
 <p>如果物理上每个时刻有9个SM并发，那么此时从A和B中读的数据都会被reuse 2次，即读block的数量减少了2/3，优化成了162/3=54次。
 计算CTA的layout的伪代码如下：</p>
 <div class="highlight"><pre class="chroma"><code class="language-python" data-lang="python"><span class="c1"># Program ID</span>
