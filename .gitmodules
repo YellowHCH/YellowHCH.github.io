@@ -7,3 +7,6 @@
 [submodule "chhuang_blogs/themes/hugo-theme-den"]
 	path = chhuang_blogs/themes/hugo-theme-den
 	url = https://github.com/pseudoyu/hugo-theme-den
+[submodule "chhuang_blogs/themes/mini"]
+	path = chhuang_blogs/themes/mini
+	url = https://github.com/YellowHCH/hugo-theme-mini.git
