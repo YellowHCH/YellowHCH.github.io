@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>Analysis triton tutorial matmul L2 cache optimization | ch_huang</title>
+
+    <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">    
+<meta name="viewport" content="width=device-width,minimum-scale=1">
+<meta name="description" content="Ref to triton tutorial triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高">
+<meta name="generator" content="Hugo 0.68.3" />
+
+
+  <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+
+<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
+
+
+
+
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css" integrity="sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js" integrity="sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js" integrity="sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl" crossorigin="anonymous"
+    onload="renderMathInElement(document.body);"></script>
+
+
+
+
+
+  </head>
+
+  <body>
+    <nav class="navigation">
+	
+		<a href="/"> <span class="arrow">←</span>Home</a>
+	
+	<a href="/posts">Archive</a>
+	<a href="/tags">Tags</a>
+	<a href="/about">About</a>
+
+	
+
+	
+	  <a class="button" href="https://yellowhch.github.io/index.xml">Subscribe</a>
+	
+</nav>
+
+
+    <main class="main">
+      
+
+<section id="single">
+    <h1 class="title">Analysis triton tutorial matmul L2 cache optimization</h1>
+
+    <div class="tip">
+        <time datetime="2023-12-15 00:00:00 &#43;0000 UTC">Dec 15, 2023</time>
+        
+        <span class="split">
+          ·
+        </span>
+        <span>
+          3 minute read
+        </span>
+    </div>
+
+    
+    
+        
+  
+
+
+    
+
+
+    <div class="content">
+      <p>Ref to <a href="https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html" target="_blank" rel="noopener">triton tutorial</a></p>
+<hr>
+<p>triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高基于GPU 缓存的data reuse。
+在GPU架构中，L1 cache是SM内的，L2 cache是全局的，所以基于L1的优化是triton compiler的事情，L2是用户去考虑的。
+基于triton的mm的伪代码 实现如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Do in parallel</span>
+<span style="color:#a2f;font-weight:bold">for</span> m <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, M, BLOCK_SIZE_M):
+  <span style="color:#080;font-style:italic"># Do in parallel</span>
+  <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, N, BLOCK_SIZE_N):
+    acc <span style="color:#666">=</span> zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype<span style="color:#666">=</span>float32)
+    <span style="color:#a2f;font-weight:bold">for</span> k <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, K, BLOCK_SIZE_K):
+      a <span style="color:#666">=</span> A[m : m<span style="color:#666">+</span>BLOCK_SIZE_M, k : k<span style="color:#666">+</span>BLOCK_SIZE_K]
+      b <span style="color:#666">=</span> B[k : k<span style="color:#666">+</span>BLOCK_SIZE_K, n : n<span style="color:#666">+</span>BLOCK_SIZE_N]
+      acc <span style="color:#666">+=</span> dot(a, b)
+    C[m : m<span style="color:#666">+</span>BLOCK_SIZE_M, n : n<span style="color:#666">+</span>BLOCK_SIZE_N] <span style="color:#666">=</span> acc
+</code></pre></div><p>逻辑上每个CTA的执行是并行的，但实际上，每个CTA都会放在SM上执行，物理上不一定是完全并行的，因此CTA的排布（执行编号）可能会影响cache hit（试想，如果某时刻SMs上的CTA从完全不同的RAM中读数据，那么cache miss是会很严重，因此起不到data reuse的效果；反之，如果SMs之间会读取相同的内存块，那么cache hit就会提高，不用频繁从RAM中读数据）。
+为方便分析，不妨假设SM数量为9，对于一个分块后tile_m=tile_n=9的mm，同时会有9个CTA在SM上执行，即同时计算C的9个blocks，最简单的CTA layout是根据raw-major去排布，如下代码所示：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">pid <span style="color:#666">=</span> triton<span style="color:#666">.</span>program_id(<span style="color:#666">0</span>);
+grid_m <span style="color:#666">=</span> (M <span style="color:#666">+</span> BLOCK_SIZE_M <span style="color:#666">-</span> <span style="color:#666">1</span>) <span style="color:#666">//</span> BLOCK_SIZE_M;
+grid_n <span style="color:#666">=</span> (N <span style="color:#666">+</span> BLOCK_SIZE_N <span style="color:#666">-</span> <span style="color:#666">1</span>) <span style="color:#666">//</span> BLOCK_SIZE_N;
+pid_m <span style="color:#666">=</span> pid <span style="color:#666">/</span> grid_n;
+pid_n <span style="color:#666">=</span> pid <span style="color:#666">%</span> grid_n;
+</code></pre></div><p>pid 是CTA的编号，往往也是SM调度的顺序。pid_m和pid_n是当前编号pid的CTA对应的需要计算的block，其效果如下图：</p>
+<p><p class="markdown-image">
+  <img src="/images/mm-l2cache-00.png" alt="image"  />
+</p></p>
+<p>即CTA的layout（CTA与block的映射关系）是行主序的。为了计算C的9个block，如果没有cache，那么需要load A的9个block 9次，B的9个block 9次，即一共load 162次 block。但因为有 L2 cache，SM从A中访问的是相同内存，所以会复用cache的数据，所以实际对A的9个block只从global memory 读了一次，但不同SM从B中读的blocks都是不同的，无法利用L2 cache，所以需要从B中读81个block，AB合计读90个block。
+为了提高L2 cache hit rate，容易想到调整当前9个CTA对应的layout，尽量提高cache hit。
+triton教程介绍的是名为 <strong>Grouped ordering</strong> 的排布方式，如下图所示:</p>
+<p><p class="markdown-image">
+  <img src="/images/mm-l2cache-01.png" alt="image"  />
+</p></p>
+<p>如果物理上每个时刻有9个SM并发，那么此时从A和B中读的数据都会被reuse 2次，即读block的数量减少了2/3，优化成了162/3=54次。
+计算CTA的layout的伪代码如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Program ID</span>
+pid <span style="color:#666">=</span> tl<span style="color:#666">.</span>program_id(axis<span style="color:#666">=</span><span style="color:#666">0</span>)
+<span style="color:#080;font-style:italic"># Number of program ids along the M axis</span>
+num_pid_m <span style="color:#666">=</span> tl<span style="color:#666">.</span>cdiv(M, BLOCK_SIZE_M)
+<span style="color:#080;font-style:italic"># Number of programs ids along the N axis</span>
+num_pid_n <span style="color:#666">=</span> tl<span style="color:#666">.</span>cdiv(N, BLOCK_SIZE_N)
+<span style="color:#080;font-style:italic"># Number of programs in group</span>
+num_pid_in_group <span style="color:#666">=</span> GROUP_SIZE_M <span style="color:#666">*</span> num_pid_n
+<span style="color:#080;font-style:italic"># Id of the group this program is in</span>
+group_id <span style="color:#666">=</span> pid <span style="color:#666">//</span> num_pid_in_group
+<span style="color:#080;font-style:italic"># Row-id of the first program in the group</span>
+first_pid_m <span style="color:#666">=</span> group_id <span style="color:#666">*</span> GROUP_SIZE_M
+<span style="color:#080;font-style:italic"># If `num_pid_m` isn&#39;t divisible by `GROUP_SIZE_M`, the last group is smaller</span>
+group_size_m <span style="color:#666">=</span> <span style="color:#a2f">min</span>(num_pid_m <span style="color:#666">-</span> first_pid_m, GROUP_SIZE_M)
+<span style="color:#080;font-style:italic"># *Within groups*, programs are ordered in a column-major order</span>
+<span style="color:#080;font-style:italic"># Row-id of the program in the *launch grid*</span>
+pid_m <span style="color:#666">=</span> first_pid_m <span style="color:#666">+</span> (pid <span style="color:#666">%</span> group_size_m)
+<span style="color:#080;font-style:italic"># Col-id of the program in the *launch grid*</span>
+pid_n <span style="color:#666">=</span> (pid <span style="color:#666">%</span> num_pid_in_group) <span style="color:#666">//</span> group_size_m
+</code></pre></div><p>每GROUP_SIZE_M行为一个Group，每个group内是列主序的。因此layout要先计算当前pid映射到哪个group，然后计算在group中的位置。其中，超参GROUP_SIZE_M需要tune，显然这个参数与L2 cache的size以及SM数量有关。triton教程中将GROUP_SIZE_M设置成8，A100有108个SM，因此预设的是每次SMs计算一个8x?的blocks。按理说应该计算sqrt(num_sm)xsqrt(num_sm)比较合适，约等于10x10，所以将GROUP_SIZE_M设置成8也算合理。</p>
+
+    </div>
+
+    
+        <div class="tags">
+            
+                <a href="https://yellowhch.github.io/tags/triton">triton</a>
+            
+                <a href="https://yellowhch.github.io/tags/matmul">matmul</a>
+            
+        </div>
+    
+    
+    
+
+</section>
+
+
+    </main>
+    
+    <footer id="footer">
+    
+        <div id="social">
+
+
+    <a class="symbol" href="https://github.com/YellowHCH/" rel="me" target="_blank">
+        
+        <svg fill="#bbbbbb" width="28" height="28"  viewBox="0 0 72 72" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    
+    <title>Github</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Social-Icons---Rounded-Black" transform="translate(-264.000000, -939.000000)">
+            <g id="Github" transform="translate(264.000000, 939.000000)">
+                <path d="M8,72 L64,72 C68.418278,72 72,68.418278 72,64 L72,8 C72,3.581722 68.418278,-8.11624501e-16 64,0 L8,0 C3.581722,8.11624501e-16 -5.41083001e-16,3.581722 0,8 L0,64 C5.41083001e-16,68.418278 3.581722,72 8,72 Z" id="Rounded" fill="#bbbbbb"></path>
+                <path d="M35.9985,13 C22.746,13 12,23.7870921 12,37.096644 C12,47.7406712 18.876,56.7718301 28.4145,59.9584121 C29.6145,60.1797862 30.0525,59.4358488 30.0525,58.7973276 C30.0525,58.2250681 30.0315,56.7100863 30.0195,54.6996482 C23.343,56.1558981 21.9345,51.4693938 21.9345,51.4693938 C20.844,48.6864054 19.2705,47.9454799 19.2705,47.9454799 C17.091,46.4500754 19.4355,46.4801943 19.4355,46.4801943 C21.843,46.6503662 23.1105,48.9634994 23.1105,48.9634994 C25.2525,52.6455377 28.728,51.5823398 30.096,50.9649018 C30.3135,49.4077535 30.9345,48.3460615 31.62,47.7436831 C26.2905,47.1352808 20.688,45.0691228 20.688,35.8361671 C20.688,33.2052792 21.6225,31.0547881 23.1585,29.3696344 C22.911,28.7597262 22.0875,26.3110578 23.3925,22.9934585 C23.3925,22.9934585 25.4085,22.3459017 29.9925,25.4632101 C31.908,24.9285993 33.96,24.6620468 36.0015,24.6515052 C38.04,24.6620468 40.0935,24.9285993 42.0105,25.4632101 C46.5915,22.3459017 48.603,22.9934585 48.603,22.9934585 C49.9125,26.3110578 49.089,28.7597262 48.8415,29.3696344 C50.3805,31.0547881 51.309,33.2052792 51.309,35.8361671 C51.309,45.0917119 45.6975,47.1292571 40.3515,47.7256117 C41.2125,48.4695491 41.9805,49.9393525 41.9805,52.1877301 C41.9805,55.4089489 41.9505,58.0067059 41.9505,58.7973276 C41.9505,59.4418726 42.3825,60.1918338 43.6005,59.9554002 C53.13,56.7627944 60,47.7376593 60,37.096644 C60,23.7870921 49.254,13 35.9985,13" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>
+    </a>
+
+
+</div>
+
+    
+
+    <div class="copyright">
+    
+       © Copyright 
+       2023 
+       <span class="split">
+        <svg fill="#bbbbbb" width="15" height="15" version="1.1" id="heart-15" xmlns="http://www.w3.org/2000/svg" width="15px" height="15px" viewBox="0 0 15 15">
+  <path d="M13.91,6.75c-1.17,2.25-4.3,5.31-6.07,6.94c-0.1903,0.1718-0.4797,0.1718-0.67,0C5.39,12.06,2.26,9,1.09,6.75&#xA;&#x9;C-1.48,1.8,5-1.5,7.5,3.45C10-1.5,16.48,1.8,13.91,6.75z"/>
+</svg>
+       </span>
+       ChenhuiHuang
+    
+    </div>
+
+    
+</footer>
+
+
+
+  </body>
+</html>

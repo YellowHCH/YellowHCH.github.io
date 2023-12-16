@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>ch_huang</title>
+    <link>https://yellowhch.github.io/</link>
+    <description>Recent content on ch_huang</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 15 Dec 2023 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://yellowhch.github.io/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Analysis triton tutorial matmul L2 cache optimization</title>
+      <link>https://yellowhch.github.io/post/analysis-triton-tutorial-matmul-opt-l2cache/</link>
+      <pubDate>Fri, 15 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/analysis-triton-tutorial-matmul-opt-l2cache/</guid>
+      <description>Ref to triton tutorial triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高</description>
+    </item>
+    
+  </channel>
+</rss>
