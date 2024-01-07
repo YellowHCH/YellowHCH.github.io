@@ -6,10 +6,64 @@
     <description>Recent content in Tags on ch_huang</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 15 Dec 2023 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 24 Dec 2023 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="https://yellowhch.github.io/tags/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Framework</title>
+      <link>https://yellowhch.github.io/tags/framework/</link>
+      <pubDate>Sun, 24 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/framework/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>triton</title>
+      <link>https://yellowhch.github.io/tags/triton/</link>
+      <pubDate>Sun, 24 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/triton/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>XLA</title>
+      <link>https://yellowhch.github.io/tags/xla/</link>
+      <pubDate>Sun, 24 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/xla/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>Graph compiler</title>
+      <link>https://yellowhch.github.io/tags/graph-compiler/</link>
+      <pubDate>Tue, 19 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/graph-compiler/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>Inductor</title>
+      <link>https://yellowhch.github.io/tags/inductor/</link>
+      <pubDate>Tue, 19 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/inductor/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>Torch</title>
+      <link>https://yellowhch.github.io/tags/torch/</link>
+      <pubDate>Tue, 19 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/torch/</guid>
+      <description></description>
+    </item>
     
     <item>
       <title>matmul</title>
@@ -17,15 +71,6 @@
       <pubDate>Fri, 15 Dec 2023 00:00:00 +0000</pubDate>
       
       <guid>https://yellowhch.github.io/tags/matmul/</guid>
-      <description></description>
-    </item>
-    
-    <item>
-      <title>triton</title>
-      <link>https://yellowhch.github.io/tags/triton/</link>
-      <pubDate>Fri, 15 Dec 2023 00:00:00 +0000</pubDate>
-      
-      <guid>https://yellowhch.github.io/tags/triton/</guid>
       <description></description>
     </item>
     

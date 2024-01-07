@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Inductor on ch_huang</title>
+    <link>https://yellowhch.github.io/tags/inductor/</link>
+    <description>Recent content in Inductor on ch_huang</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Tue, 19 Dec 2023 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://yellowhch.github.io/tags/inductor/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Inductor code review</title>
+      <link>https://yellowhch.github.io/post/inductor-code-review/</link>
+      <pubDate>Tue, 19 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/inductor-code-review/</guid>
+      <description>compile_fx dynamo 注册 inductor 主入口是 compile_fx 函数，在dynamo中 @register_backend def inductor(*args, **kwargs): # do import here to avoid loading inductor into memory when it is not used from torch._inductor.compile_fx import compile_fx return compile_fx(*args, **kwargs) compile_fx 核心逻辑 函数声明 def compile_fx( model_: torch.fx.GraphModule, example_inputs_: List[torch.Tensor], inner_compile: Callable[..., Any] = compile_fx_inner, config_patches: Optional[Dict[str, Any]]</description>
+    </item>
+    
+  </channel>
+</rss>

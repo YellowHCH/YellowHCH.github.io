@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Framework on ch_huang</title>
+    <link>https://yellowhch.github.io/tags/framework/</link>
+    <description>Recent content in Framework on ch_huang</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 24 Dec 2023 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://yellowhch.github.io/tags/framework/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>How does xla integrate with triton</title>
+      <link>https://yellowhch.github.io/post/how-does-xla-integrate-triton/</link>
+      <pubDate>Sun, 24 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/how-does-xla-integrate-triton/</guid>
+      <description>Brief xla的codegen可以选择使用triton backend 对少量的op进行codegen，包括matmul和softmax。 通过选项xla_gpu_</description>
+    </item>
+    
+  </channel>
+</rss>

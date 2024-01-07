@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>How does xla integrate with triton | ch_huang</title>
+
+    <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">    
+<meta name="viewport" content="width=device-width,minimum-scale=1">
+<meta name="description" content="Brief xla的codegen可以选择使用triton backend 对少量的op进行codegen，包括matmul和softmax。 通过选项xla_gpu_">
+<meta name="generator" content="Hugo 0.68.3" />
+
+
+  <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+
+<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
+
+
+
+
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css" integrity="sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js" integrity="sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js" integrity="sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl" crossorigin="anonymous"
+    onload="renderMathInElement(document.body);"></script>
+
+
+
+
+
+  </head>
+
+  <body>
+    <nav class="navigation">
+	
+		<a href="/"> <span class="arrow">←</span>Home</a>
+	
+	<a href="/posts">Archive</a>
+	<a href="/tags">Tags</a>
+	<a href="/about">About</a>
+
+	
+
+	
+</nav>
+
+
+    <main class="main">
+      
+
+<section id="single">
+    <h1 class="title">How does xla integrate with triton</h1>
+
+    <div class="tip">
+        <time datetime="2023-12-24 00:00:00 &#43;0000 UTC">Dec 24, 2023</time>
+        
+        <span class="split">
+          ·
+        </span>
+        <span>
+          7 minute read
+        </span>
+    </div>
+
+    
+    
+        
+  
+
+
+    
+
+
+    <div class="content">
+      <h1 id="brief">Brief</h1>
+<p>xla的codegen可以选择使用triton backend 对少量的op进行codegen，包括<code>matmul</code>和<code>softmax</code>。</p>
+<p>通过选项<code>xla_gpu_enable_triton_gemm</code>和<code>xla_gpu_enable_triton_softmax_fusion</code>控制是否开启。</p>
+<h1 id="matmul">matmul</h1>
+<p><code>GemmRewriterTriton</code>实现了选择 gemm 走 triton 后端的逻辑。</p>
+<ul>
+<li>Rewriter</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++"><span style="color:#080;font-style:italic">// Extracts into fused computations parts of HLO graph including dot()
+</span><span style="color:#080;font-style:italic">// operations that can target the triton GEMM emitter.
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">class</span> <span style="color:#00f">GemmRewriterTritonVisitor</span> <span style="color:#666">:</span> <span style="color:#a2f;font-weight:bold">public</span> DfsHloRewriteVisitor {
+ <span style="color:#a2f;font-weight:bold">public</span><span style="color:#666">:</span>
+  <span style="color:#a2f;font-weight:bold">explicit</span> GemmRewriterTritonVisitor(<span style="color:#a2f;font-weight:bold">const</span> GpuVersion gpu_version)
+      <span style="color:#666">:</span> gpu_version_(gpu_version) {}
+  <span style="color:#080;font-style:italic">// NOTE. 分析gemm是否走triton 后端
+</span><span style="color:#080;font-style:italic"></span>  Status <span style="color:#00a000">HandleDot</span>(HloInstruction<span style="color:#666">*</span> dot) <span style="color:#a2f;font-weight:bold">override</span> {
+    VLOG(<span style="color:#666">5</span>) <span style="color:#666">&lt;&lt;</span> dot<span style="color:#666">-&gt;</span>ToString();
+    <span style="color:#080;font-style:italic">// NOTE. 检查数据类型是否支持，检查是否有fuse inputs outputs的机会。
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>IsTritonHandledGEMM(<span style="color:#666">*</span>dot, gpu_version_)) {
+      <span style="color:#a2f;font-weight:bold">return</span> OkStatus();
+    }
+
+    <span style="color:#080;font-style:italic">// NOTE. ...
+</span><span style="color:#080;font-style:italic"></span>
+    HloComputation<span style="color:#666">*</span> computation <span style="color:#666">=</span>
+        dot<span style="color:#666">-&gt;</span>GetModule()<span style="color:#666">-&gt;</span>AddComputationAndUnifyNamesAndIds(builder.Build(),
+                                                            <span style="color:#080;font-style:italic">/*is_entry=*/</span><span style="color:#a2f">false</span>);
+    HloInstruction<span style="color:#666">*</span> dot_fusion <span style="color:#666">=</span>
+        dot<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>AddInstruction(HloInstruction<span style="color:#666">::</span>CreateFusion(
+            computation<span style="color:#666">-&gt;</span>root_instruction()<span style="color:#666">-&gt;</span>shape(),
+            HloInstruction<span style="color:#666">::</span>FusionKind<span style="color:#666">::</span>kCustom, call_operands, computation));
+    dot_fusion<span style="color:#666">-&gt;</span>GetModule()<span style="color:#666">-&gt;</span>SetAndUniquifyInstrName(dot_fusion,
+                                                     suggested_name);
+
+    TF_ASSIGN_OR_RETURN(<span style="color:#a2f;font-weight:bold">auto</span> backend_config,
+                        dot_fusion<span style="color:#666">-&gt;</span>backend_config<span style="color:#666">&lt;</span>FusionBackendConfig<span style="color:#666">&gt;</span>());
+    <span style="color:#080;font-style:italic">// NOTE. 将后端设置成triton，使用triton emit
+</span><span style="color:#080;font-style:italic"></span>    backend_config.set_kind(std<span style="color:#666">::</span>string(kTritonGemmFusionKind));
+    TF_RETURN_IF_ERROR(dot_fusion<span style="color:#666">-&gt;</span>set_backend_config(backend_config));
+    <span style="color:#080;font-style:italic">// NOTE. ...
+</span><span style="color:#080;font-style:italic"></span>  }
+
+ <span style="color:#a2f;font-weight:bold">private</span><span style="color:#666">:</span>
+  GpuVersion gpu_version_;
+};
+</code></pre></div><ul>
+<li>triton gemm emitter</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++">StatusOr<span style="color:#666">&lt;</span>LaunchDimensions<span style="color:#666">&gt;</span> TritonWrapper(
+    absl<span style="color:#666">::</span>string_view fn_name, <span style="color:#a2f;font-weight:bold">const</span> HloComputation<span style="color:#666">*</span> hlo_computation,
+    absl<span style="color:#666">::</span>string_view fusion_kind, <span style="color:#a2f;font-weight:bold">const</span> se<span style="color:#666">::</span>CudaComputeCapability<span style="color:#666">&amp;</span> cc,
+    <span style="color:#a2f;font-weight:bold">const</span> GpuDeviceInfo<span style="color:#666">&amp;</span> device_info,
+    <span style="color:#a2f;font-weight:bold">const</span> AutotuneResult<span style="color:#666">::</span>TritonGemmKey<span style="color:#666">&amp;</span> config, llvm<span style="color:#666">::</span>Module<span style="color:#666">*</span> llvm_module,
+    LaunchDimensionsGenerator generator, mlir<span style="color:#666">::</span>MLIRContext<span style="color:#666">&amp;</span> mlir_context) {
+
+  <span style="color:#080;font-style:italic">// NOTE. 生成 triton dialect
+</span><span style="color:#080;font-style:italic"></span>  mlir_context.loadDialect<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>TritonDialect<span style="color:#666">&gt;</span>();
+  mlir<span style="color:#666">::</span>OpBuilder b(<span style="color:#666">&amp;</span>mlir_context);
+  <span style="color:#a2f;font-weight:bold">auto</span> loc <span style="color:#666">=</span> mlir<span style="color:#666">::</span>NameLoc<span style="color:#666">::</span>get(b.getStringAttr(hlo_computation<span style="color:#666">-&gt;</span>name()));
+  <span style="color:#a2f;font-weight:bold">auto</span> triton_module <span style="color:#666">=</span> mlir<span style="color:#666">::</span>ModuleOp<span style="color:#666">::</span>create(loc);
+  b.setInsertionPointToEnd(triton_module.getBody());
+
+  <span style="color:#080;font-style:italic">// Build Triton kernel.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// NOTE. 构造函数入参
+</span><span style="color:#080;font-style:italic"></span>  SmallVector<span style="color:#666">&lt;</span>Type<span style="color:#666">&gt;</span> fn_arg_types;
+  <span style="color:#a2f;font-weight:bold">for</span> (HloInstruction<span style="color:#666">*</span> <span style="color:#a0a000">p</span> : hlo_computation<span style="color:#666">-&gt;</span>parameter_instructions()) {
+    fn_arg_types.push_back(mt<span style="color:#666">::</span>PointerType<span style="color:#666">::</span>get(
+        TritonType(b, p<span style="color:#666">-&gt;</span>shape().element_type()), mn<span style="color:#666">::</span>kGlobalMemorySpace));
+  }
+
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> ShapeUtil<span style="color:#666">::</span>IndexedShape<span style="color:#666">&amp;</span> <span style="color:#a0a000">s</span> :
+       ShapeUtil<span style="color:#666">::</span>GetLeafShapes(hlo_computation<span style="color:#666">-&gt;</span>root_instruction()<span style="color:#666">-&gt;</span>shape())) {
+    fn_arg_types.push_back(mt<span style="color:#666">::</span>PointerType<span style="color:#666">::</span>get(
+        TritonType(b, s.shape.element_type()), mn<span style="color:#666">::</span>kGlobalMemorySpace));
+  }
+
+  <span style="color:#080;font-style:italic">// NOTE. 生成函数体
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> fn <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(loc, fn_name,
+                                 b.getFunctionType(fn_arg_types, std<span style="color:#666">::</span>nullopt));
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> fn.getNumArguments(); <span style="color:#666">++</span>i) {
+    fn.setArgAttr(i, <span style="color:#b44">&#34;tt.divisibility&#34;</span>, b.getIntegerAttr(b.getI32Type(), <span style="color:#666">16</span>));
+  }
+  fn.addEntryBlock();
+  b.setInsertionPointToStart(<span style="color:#666">&amp;</span>fn.front());
+  <span style="color:#080;font-style:italic">// NOTE. triton codegen 依赖libdevice中的 math functions.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string libdevice_path <span style="color:#666">=</span>
+      nvptx<span style="color:#666">::</span>LibDevicePath(hlo_computation<span style="color:#666">-&gt;</span>parent()
+                               <span style="color:#666">-&gt;</span>config()
+                               .debug_options()
+                               .xla_gpu_cuda_data_dir());
+  <span style="color:#080;font-style:italic">// NOTE. 调用generator填充函数body
+</span><span style="color:#080;font-style:italic"></span>  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      generator(b, libdevice_path, hlo_computation, fn, config,
+                                device_info.shared_memory_per_block_optin));
+
+  b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ReturnOp<span style="color:#666">&gt;</span>(loc);
+
+  <span style="color:#080;font-style:italic">// NOTE. 基本上是把triton compile的py实现用cpp实现。
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// Compile Triton kernel to LLVM.
+</span><span style="color:#080;font-style:italic"></span>  mlir<span style="color:#666">::</span>PassManager pm(<span style="color:#666">&amp;</span>mlir_context);
+
+  std<span style="color:#666">::</span>optional<span style="color:#666">&lt;</span>llvm<span style="color:#666">::</span>raw_fd_ostream<span style="color:#666">&gt;</span> log_stream;
+  <span style="color:#a2f;font-weight:bold">const</span> HloModule<span style="color:#666">*</span> hlo_module <span style="color:#666">=</span> hlo_computation<span style="color:#666">-&gt;</span>parent();
+  <span style="color:#080;font-style:italic">// NOTE. 调用triton的pipeline编译ttir
+</span><span style="color:#080;font-style:italic"></span>  CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
+  <span style="color:#080;font-style:italic">// Triton generates pointers to the global address space, while XLA needs a
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// kernel signature with pointers to the generic address space.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(std<span style="color:#666">::</span>make_unique<span style="color:#666">&lt;</span>GeneralizeKernelSignaturePass<span style="color:#666">&gt;</span>());
+  <span style="color:#080;font-style:italic">// llvm::Linker::linkModules() segfaults if we don&#39;t strip locations.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(mlir<span style="color:#666">::</span>createStripDebugInfoPass());
+
+  <span style="color:#0b0;font-weight:bold">bool</span> succeeded <span style="color:#666">=</span> mlir<span style="color:#666">::</span>succeeded(pm.run(triton_module));
+
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> shared_mem_bytes <span style="color:#666">=</span>
+      triton_module<span style="color:#666">-&gt;</span>getAttrOfType<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>IntegerAttr<span style="color:#666">&gt;</span>(<span style="color:#b44">&#34;triton_gpu.shared&#34;</span>)
+          .getInt();
+  VLOG(<span style="color:#666">2</span>) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;Shared memory usage: &#34;</span> <span style="color:#666">&lt;&lt;</span> shared_mem_bytes <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34; B&#34;</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (shared_mem_bytes <span style="color:#666">&gt;</span> device_info.shared_memory_per_block_optin) {
+    <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#00a000">ResourceExhausted</span>(<span style="color:#b44">&#34;Shared memory size limit exceeded.&#34;</span>);
+  }
+  launch_dimensions.SetSharedMemBytes(shared_mem_bytes);
+
+  TF_ASSIGN_OR_RETURN(std<span style="color:#666">::</span>unique_ptr<span style="color:#666">&lt;</span>llvm<span style="color:#666">::</span>Module<span style="color:#666">&gt;</span> ll_triton_module,
+                      TranslateLLVMToLLVMIR(<span style="color:#666">&amp;</span>llvm_module<span style="color:#666">-&gt;</span>getContext(),
+                                            triton_module, libdevice_path));
+  LogAndVerify(ll_triton_module.get());
+
+  <span style="color:#080;font-style:italic">// Integrate LLVM matmul kernel into XLA&#39;s LLVM module.
+</span><span style="color:#080;font-style:italic"></span>  ll_triton_module<span style="color:#666">-&gt;</span>eraseNamedMDNode(
+      ll_triton_module<span style="color:#666">-&gt;</span>getNamedMetadata(<span style="color:#b44">&#34;nvvm.annotations&#34;</span>));
+  ll_triton_module<span style="color:#666">-&gt;</span>setDataLayout(llvm_module<span style="color:#666">-&gt;</span>getDataLayout());
+  <span style="color:#080;font-style:italic">// Use override flag because libdevice functions can be present in both.
+</span><span style="color:#080;font-style:italic"></span>  CHECK(<span style="color:#666">!</span>llvm<span style="color:#666">::</span>Linker<span style="color:#666">::</span>linkModules(<span style="color:#666">*</span>llvm_module, std<span style="color:#666">::</span>move(ll_triton_module),
+                                   llvm<span style="color:#666">::</span>Linker<span style="color:#666">::</span>Flags<span style="color:#666">::</span>OverrideFromSrc));
+  LogAndVerify(llvm_module);
+
+  <span style="color:#a2f;font-weight:bold">return</span> launch_dimensions;
+}
+</code></pre></div><ul>
+<li>generator</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++"><span style="color:#a2f;font-weight:bold">using</span> LaunchDimensionsGenerator <span style="color:#666">=</span> std<span style="color:#666">::</span>function<span style="color:#666">&lt;</span>StatusOr<span style="color:#666">&lt;</span>LaunchDimensions<span style="color:#666">&gt;</span>(
+    mlir<span style="color:#666">::</span>OpBuilder, absl<span style="color:#666">::</span>string_view, <span style="color:#a2f;font-weight:bold">const</span> HloComputation<span style="color:#666">*</span>,
+    mlir<span style="color:#666">::</span>triton<span style="color:#666">::</span>FuncOp, <span style="color:#a2f;font-weight:bold">const</span> AutotuneResult<span style="color:#666">::</span>TritonGemmKey<span style="color:#666">&amp;</span>, <span style="color:#0b0;font-weight:bold">int</span>)<span style="color:#666">&gt;</span>;
+</code></pre></div><ul>
+<li>matmul impl</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++">StatusOr<span style="color:#666">&lt;</span>LaunchDimensions<span style="color:#666">&gt;</span> MatMul(
+    mlir<span style="color:#666">::</span>OpBuilder builder, absl<span style="color:#666">::</span>string_view libdevice_path,
+    <span style="color:#a2f;font-weight:bold">const</span> HloComputation<span style="color:#666">*</span> computation, mlir<span style="color:#666">::</span>triton<span style="color:#666">::</span>FuncOp fn,
+    <span style="color:#a2f;font-weight:bold">const</span> tensorflow<span style="color:#666">::</span>AutotuneResult<span style="color:#666">::</span>TritonGemmKey<span style="color:#666">&amp;</span> config, <span style="color:#0b0;font-weight:bold">int</span> shmem_budget) {
+  <span style="color:#a2f;font-weight:bold">const</span> HloDotInstruction<span style="color:#666">*</span> dot_instr <span style="color:#666">=</span> DynCast<span style="color:#666">&lt;</span>HloDotInstruction<span style="color:#666">&gt;</span>(
+      hlo_query<span style="color:#666">::</span>GetFirstInstructionWithOpcode(<span style="color:#666">*</span>computation, HloOpcode<span style="color:#666">::</span>kDot));
+  <span style="color:#080;font-style:italic">// Use 32-bit indexing if addressing any of the inputs or the output (which
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// could grow if split_k is set) does not cross the INT_MAX boundary.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// Otherwise, fall back to 64-bit indexing, which is slower.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#0b0;font-weight:bold">bool</span> use_64bit_indexing <span style="color:#666">=</span>
+      ShapeUtil<span style="color:#666">::</span>ElementsIn(dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape()) <span style="color:#666">&gt;</span> INT_MAX <span style="color:#666">||</span>
+      ShapeUtil<span style="color:#666">::</span>ElementsIn(dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>shape()) <span style="color:#666">&gt;</span> INT_MAX <span style="color:#666">||</span>
+      ShapeUtil<span style="color:#666">::</span>ElementsIn(dot_instr<span style="color:#666">-&gt;</span>shape()) <span style="color:#666">*</span> config.split_k() <span style="color:#666">&gt;</span> INT_MAX;
+  <span style="color:#a2f;font-weight:bold">if</span> (use_64bit_indexing) {
+    <span style="color:#a2f;font-weight:bold">return</span> MatMulImpl<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span><span style="color:#666">&gt;</span>(builder, libdevice_path, dot_instr, fn, config,
+                               shmem_budget);
+  } <span style="color:#a2f;font-weight:bold">else</span> {
+    <span style="color:#a2f;font-weight:bold">return</span> MatMulImpl<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int32_t</span><span style="color:#666">&gt;</span>(builder, libdevice_path, dot_instr, fn, config,
+                               shmem_budget);
+  }
+}
+</code></pre></div><ul>
+<li>matmul ttir impl</li>
+</ul>
+<p>先生成ttir然后照着用builder实现。应该是因为xla的codegen是在c++环境的，无法复用triton的前端，所以要自己实现。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++"><span style="color:#a2f;font-weight:bold">template</span> <span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> IndexT<span style="color:#666">&gt;</span>
+StatusOr<span style="color:#666">&lt;</span>LaunchDimensions<span style="color:#666">&gt;</span> MatMulImpl(
+    mlir<span style="color:#666">::</span>OpBuilder builder, absl<span style="color:#666">::</span>string_view libdevice_path,
+    <span style="color:#a2f;font-weight:bold">const</span> HloDotInstruction<span style="color:#666">*</span> dot_instr, mlir<span style="color:#666">::</span>triton<span style="color:#666">::</span>FuncOp fn,
+    <span style="color:#a2f;font-weight:bold">const</span> tensorflow<span style="color:#666">::</span>AutotuneResult<span style="color:#666">::</span>TritonGemmKey<span style="color:#666">&amp;</span> config, <span style="color:#0b0;font-weight:bold">int</span> shmem_budget) {
+  <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> root <span style="color:#666">=</span> dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>root_instruction();
+  CHECK(<span style="color:#666">!</span>root<span style="color:#666">-&gt;</span>shape().IsTuple());
+
+  <span style="color:#080;font-style:italic">// We&#39;ll be creating a lot of instructions from a single dot, use an
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// implicit loc builder so we don&#39;t have to pass around the location all the
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// time.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> loc <span style="color:#666">=</span> mlir<span style="color:#666">::</span>NameLoc<span style="color:#666">::</span>get(builder.getStringAttr(dot_instr<span style="color:#666">-&gt;</span>name()));
+  mlir<span style="color:#666">::</span>ImplicitLocOpBuilder b(loc, builder);
+  Type i32_ty <span style="color:#666">=</span> b.getI32Type();
+  Type int_ty;
+  <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (std<span style="color:#666">::</span>is_same_v<span style="color:#666">&lt;</span>IndexT, <span style="color:#0b0;font-weight:bold">int64_t</span><span style="color:#666">&gt;</span>) {
+    int_ty <span style="color:#666">=</span> b.getI64Type();
+  } <span style="color:#a2f;font-weight:bold">else</span> {
+    int_ty <span style="color:#666">=</span> b.getI32Type();
+  }
+  <span style="color:#a2f;font-weight:bold">const</span> DotDimensionNumbers<span style="color:#666">&amp;</span> dims <span style="color:#666">=</span> dot_instr<span style="color:#666">-&gt;</span>dot_dimension_numbers();
+  <span style="color:#a2f;font-weight:bold">const</span> DotFusionAnalysis <span style="color:#00a000">analysis</span>(dot_instr<span style="color:#666">-&gt;</span>parent(), config.split_k());
+
+  <span style="color:#080;font-style:italic">// Rely on dot decomposer: there is just one contracting and one
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// non-contracting dimension on each side + batch ones optionally.
+</span><span style="color:#080;font-style:italic"></span>  CHECK_EQ(dims.lhs_contracting_dimensions_size(), <span style="color:#666">1</span>);
+  CHECK_EQ(dims.rhs_contracting_dimensions_size(), <span style="color:#666">1</span>);
+
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">bool</span> have_split_k <span style="color:#666">=</span> config.split_k() <span style="color:#666">&gt;</span> <span style="color:#666">1</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (have_split_k) {
+    <span style="color:#080;font-style:italic">// Split-K dimension has to be the first batch one and have an index
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// just before the contracting one.
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// Size of this dimension has to match the split_k value.
+</span><span style="color:#080;font-style:italic"></span>    CHECK_EQ(dims.lhs_batch_dimensions(<span style="color:#666">0</span>),
+             dims.lhs_contracting_dimensions(<span style="color:#666">0</span>) <span style="color:#666">-</span> <span style="color:#666">1</span>);
+    CHECK_EQ(dims.rhs_batch_dimensions(<span style="color:#666">0</span>),
+             dims.rhs_contracting_dimensions(<span style="color:#666">0</span>) <span style="color:#666">-</span> <span style="color:#666">1</span>);
+    CHECK_EQ(config.split_k(), dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape().dimensions(
+                                   dims.lhs_contracting_dimensions(<span style="color:#666">0</span>) <span style="color:#666">-</span> <span style="color:#666">1</span>));
+    CHECK_EQ(config.split_k(), dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>shape().dimensions(
+                                   dims.rhs_contracting_dimensions(<span style="color:#666">0</span>) <span style="color:#666">-</span> <span style="color:#666">1</span>));
+  }
+
+  CHECK_LE(dims.lhs_batch_dimensions_size(), <span style="color:#666">1</span> <span style="color:#666">+</span> have_split_k);
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">bool</span> have_batch <span style="color:#666">=</span> dims.lhs_batch_dimensions_size() <span style="color:#666">-</span> have_split_k;
+  CHECK_EQ(dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape().rank(),
+           <span style="color:#666">2</span> <span style="color:#666">+</span> have_split_k <span style="color:#666">+</span> have_batch);
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int64_t</span> lhs_noncontracting_dim_idx <span style="color:#666">=</span>
+      GetNonContractingDims(dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape(),
+                            dims.lhs_batch_dimensions(),
+                            dims.lhs_contracting_dimensions())
+          .value()[<span style="color:#666">0</span>];
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int64_t</span> rhs_noncontracting_dim_idx <span style="color:#666">=</span>
+      GetNonContractingDims(dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>shape(),
+                            dims.rhs_batch_dimensions(),
+                            dims.rhs_contracting_dimensions())
+          .value()[<span style="color:#666">0</span>];
+
+  <span style="color:#080;font-style:italic">// Logical output dimensions are always ordered as:
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   split-K, batch, non-contracting LHS, non-contracting RHS,
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// where split-K and batch are optional.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> rhs_nc_out_idx <span style="color:#666">=</span> dot_instr<span style="color:#666">-&gt;</span>shape().rank() <span style="color:#666">-</span> <span style="color:#666">1</span>;
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> lhs_nc_out_idx <span style="color:#666">=</span> dot_instr<span style="color:#666">-&gt;</span>shape().rank() <span style="color:#666">-</span> <span style="color:#666">2</span>;
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> split_k_out_idx <span style="color:#666">=</span> have_split_k <span style="color:#666">?</span> <span style="color:#666">0</span> <span style="color:#666">:</span> <span style="color:#666">-</span><span style="color:#666">1</span>;
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> batch_out_idx <span style="color:#666">=</span> have_batch <span style="color:#666">?</span> (have_split_k <span style="color:#666">?</span> <span style="color:#666">1</span> <span style="color:#666">:</span> <span style="color:#666">0</span>) <span style="color:#666">:</span> <span style="color:#666">-</span><span style="color:#666">1</span>;
+
+  <span style="color:#080;font-style:italic">// LHS non-contracting dimension length.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// LHS non-contracting can be split, so this holds its full size unlike the
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// m_minor.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#0b0;font-weight:bold">int</span> m <span style="color:#666">=</span>
+      analysis.IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, lhs_nc_out_idx)
+          <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+          .count;
+
+  <span style="color:#080;font-style:italic">// Contracting dimension length.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> k <span style="color:#666">=</span> dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape().dimensions(
+                    dims.lhs_contracting_dimensions(<span style="color:#666">0</span>)) <span style="color:#666">*</span>
+                config.split_k();
+
+  <span style="color:#080;font-style:italic">// For now all parameters of one scope (dot LHS, RHS) are required to have the
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// same physical layout = use the same indices in tiles. This is enforced by
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// construction in the Triton GEMM rewriter.
+</span><span style="color:#080;font-style:italic"></span>
+  <span style="color:#080;font-style:italic">// LHS non-contracting can be split into two.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#0b0;font-weight:bold">bool</span> lhs_nc_split <span style="color:#666">=</span> <span style="color:#a2f">false</span>;
+  <span style="color:#080;font-style:italic">// Either batch size or upper part of the length of a split nc dimension.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#0b0;font-weight:bold">int</span> batch_size <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  IndexT stride_lhs_m <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  IndexT stride_lhs_k <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  IndexT stride_lhs_batch <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  IndexT stride_rhs_batch <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS).empty()) {
+    <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> lhs_param0 <span style="color:#666">=</span>
+        <span style="color:#666">*</span>analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS).begin();
+    <span style="color:#a2f;font-weight:bold">const</span> DotFusionAnalysis<span style="color:#666">::</span>DimIterationSpec<span style="color:#666">*</span> lhs_nc_iter_spec <span style="color:#666">=</span>
+        analysis.IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS, lhs_param0,
+                          lhs_noncontracting_dim_idx);
+    lhs_nc_split <span style="color:#666">=</span> lhs_nc_iter_spec<span style="color:#666">-&gt;</span>size() <span style="color:#666">&gt;</span> <span style="color:#666">1</span>;
+    <span style="color:#080;font-style:italic">// For now split non-contracting and batch are not supported simultaneously
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// because they are implemented via same mechanism.
+</span><span style="color:#080;font-style:italic"></span>    CHECK_LE(have_batch <span style="color:#666">+</span> lhs_nc_split, <span style="color:#666">1</span>);
+    <span style="color:#a2f;font-weight:bold">if</span> (lhs_nc_split) {
+      batch_size <span style="color:#666">=</span> lhs_nc_iter_spec<span style="color:#666">-&gt;</span>at(<span style="color:#666">1</span>).count;
+      CHECK_GE(batch_size, <span style="color:#666">1</span>);
+      stride_lhs_batch <span style="color:#666">=</span> lhs_nc_iter_spec<span style="color:#666">-&gt;</span>at(<span style="color:#666">1</span>).stride;
+      CHECK_GE(stride_lhs_batch, <span style="color:#666">1</span>);
+    } <span style="color:#a2f;font-weight:bold">else</span> <span style="color:#00a000">if</span> (have_batch) {
+      <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int64_t</span> lhs_batch_dim_idx <span style="color:#666">=</span>
+          <span style="color:#666">*</span>(dims.lhs_batch_dimensions().cend() <span style="color:#666">-</span> <span style="color:#666">1</span>);
+      batch_size <span style="color:#666">=</span> analysis
+                       .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS, lhs_param0,
+                                 lhs_batch_dim_idx)
+                       <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                       .count;
+      CHECK_GE(batch_size, <span style="color:#666">1</span>);
+      stride_lhs_batch <span style="color:#666">=</span> analysis
+                             .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS,
+                                       lhs_param0, lhs_batch_dim_idx)
+                             <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                             .stride;
+      CHECK_GE(stride_lhs_batch, <span style="color:#666">1</span>);
+    }
+
+    CHECK_EQ(lhs_nc_iter_spec<span style="color:#666">-&gt;</span>size(), <span style="color:#666">1</span> <span style="color:#666">+</span> lhs_nc_split);
+    CHECK_EQ(analysis
+                 .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS, lhs_param0,
+                           dims.lhs_contracting_dimensions(<span style="color:#666">0</span>))
+                 <span style="color:#666">-&gt;</span>size(),
+             <span style="color:#666">1</span>);
+    stride_lhs_m <span style="color:#666">=</span> lhs_nc_iter_spec<span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>).stride;
+    stride_lhs_k <span style="color:#666">=</span> analysis
+                       .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS, lhs_param0,
+                                 dims.lhs_contracting_dimensions(<span style="color:#666">0</span>))
+                       <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                       .stride;
+    <span style="color:#080;font-style:italic">// Just the fastest-varying part of it if the dimension is split.
+</span><span style="color:#080;font-style:italic"></span>    m <span style="color:#666">=</span> lhs_nc_iter_spec<span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>).count;
+  }
+
+  CHECK_GE(m, <span style="color:#666">1</span>);
+
+  IndexT stride_rhs_k <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  IndexT stride_rhs_n <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS).empty()) {
+    <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> rhs_param0 <span style="color:#666">=</span>
+        <span style="color:#666">*</span>analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS).begin();
+    <span style="color:#080;font-style:italic">// Splitting of RHS non-contracting is not supported yet.
+</span><span style="color:#080;font-style:italic"></span>    CHECK_EQ(analysis
+                 .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS, rhs_param0,
+                           rhs_noncontracting_dim_idx)
+                 <span style="color:#666">-&gt;</span>size(),
+             <span style="color:#666">1</span>);
+    stride_rhs_k <span style="color:#666">=</span> analysis
+                       .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS, rhs_param0,
+                                 dims.rhs_contracting_dimensions(<span style="color:#666">0</span>))
+                       <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                       .stride;
+    stride_rhs_n <span style="color:#666">=</span> analysis
+                       .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS, rhs_param0,
+                                 rhs_noncontracting_dim_idx)
+                       <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                       .stride;
+    <span style="color:#a2f;font-weight:bold">if</span> (have_batch) {
+      <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int64_t</span> rhs_batch_dim_idx <span style="color:#666">=</span>
+          <span style="color:#666">*</span>(dims.rhs_batch_dimensions().cend() <span style="color:#666">-</span> <span style="color:#666">1</span>);
+      stride_rhs_batch <span style="color:#666">=</span> analysis
+                             .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS,
+                                       rhs_param0, rhs_batch_dim_idx)
+                             <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+                             .stride;
+      CHECK_GE(stride_rhs_batch, <span style="color:#666">1</span>);
+    }
+  }
+
+  <span style="color:#a2f;font-weight:bold">constexpr</span> <span style="color:#0b0;font-weight:bold">int</span> group_m <span style="color:#666">=</span> <span style="color:#666">8</span>;
+
+  IndexT stride_out_m <span style="color:#666">=</span>
+      analysis.IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, lhs_nc_out_idx)
+          <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+          .stride;
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int64_t</span> n <span style="color:#666">=</span>
+      analysis.IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, rhs_nc_out_idx)
+          <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+          .count;
+  CHECK_GE(n, <span style="color:#666">1</span>);
+  IndexT stride_out_n <span style="color:#666">=</span>
+      analysis.IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, rhs_nc_out_idx)
+          <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+          .stride;
+  IndexT stride_out_split_k <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (have_split_k) {
+    stride_out_split_k <span style="color:#666">=</span>
+        analysis
+            .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, split_k_out_idx)
+            <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+            .stride;
+    CHECK_GE(stride_out_split_k, <span style="color:#666">1</span>);
+  }
+  IndexT stride_out_batch <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  <span style="color:#a2f;font-weight:bold">if</span> (have_batch) {
+    stride_out_batch <span style="color:#666">=</span>
+        analysis
+            .IterSpec(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>OUTPUT, root, batch_out_idx)
+            <span style="color:#666">-&gt;</span>at(<span style="color:#666">0</span>)
+            .stride;
+    CHECK_GE(stride_out_batch, <span style="color:#666">1</span>);
+  } <span style="color:#a2f;font-weight:bold">else</span> <span style="color:#00a000">if</span> (lhs_nc_split) {
+    <span style="color:#080;font-style:italic">// Dimension of the output produced by the non-contracting LHS one
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// is physically contiguous even if the producing LHS one is split.
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// Because the major part of the split is implemented using the batch
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// logic stride_out_batch is populated here as the stride of the minor
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// part times its size.
+</span><span style="color:#080;font-style:italic"></span>    stride_out_batch <span style="color:#666">=</span> stride_out_m <span style="color:#666">*</span> m;
+  }
+
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> block_m <span style="color:#666">=</span> config.block_m();
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> block_k <span style="color:#666">=</span> config.block_k();
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> block_n <span style="color:#666">=</span> config.block_n();
+
+  CHECK_GE(block_m, <span style="color:#666">16</span>);
+  CHECK_GE(block_k, <span style="color:#666">16</span>);
+  CHECK_GE(block_n, <span style="color:#666">16</span>);
+
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> grid_m <span style="color:#666">=</span> ceil(<span style="color:#666">1.0</span> <span style="color:#666">*</span> m <span style="color:#666">/</span> block_m);
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> grid_n <span style="color:#666">=</span> ceil(<span style="color:#666">1.0</span> <span style="color:#666">*</span> n <span style="color:#666">/</span> block_n);
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> width <span style="color:#666">=</span> group_m <span style="color:#666">*</span> grid_n;
+
+  Type dot_output_ty <span style="color:#666">=</span> TritonType(b, dot_instr<span style="color:#666">-&gt;</span>shape().element_type());
+
+  {
+    <span style="color:#0b0;font-weight:bold">int</span> required_shmem_size <span style="color:#666">=</span> <span style="color:#666">0</span>;
+    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> <span style="color:#a0a000">hlo</span> :
+         analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>LHS)) {
+      required_shmem_size <span style="color:#666">+=</span> block_m <span style="color:#666">*</span> ShapeUtil<span style="color:#666">::</span>ByteSizeOfPrimitiveType(
+                                           hlo<span style="color:#666">-&gt;</span>shape().element_type());
+    }
+    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> <span style="color:#a0a000">hlo</span> :
+         analysis.ScopeParameters(DotFusionAnalysis<span style="color:#666">::</span>Scope<span style="color:#666">::</span>RHS)) {
+      required_shmem_size <span style="color:#666">+=</span> block_n <span style="color:#666">*</span> ShapeUtil<span style="color:#666">::</span>ByteSizeOfPrimitiveType(
+                                           hlo<span style="color:#666">-&gt;</span>shape().element_type());
+    }
+    required_shmem_size <span style="color:#666">*=</span> block_k <span style="color:#666">*</span> config.num_stages();
+    <span style="color:#a2f;font-weight:bold">if</span> (required_shmem_size <span style="color:#666">&gt;</span> shmem_budget) {
+      <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#00a000">ResourceExhausted</span>(<span style="color:#b44">&#34;Requires too much shared memory: %d &gt; %d&#34;</span>,
+                               required_shmem_size, shmem_budget);
+    }
+  }
+
+  <span style="color:#080;font-style:italic">// Data type of dot() immediate inputs.
+</span><span style="color:#080;font-style:italic"></span>  Type dot_input_ty <span style="color:#666">=</span> b.getF32Type();
+  {
+    <span style="color:#a2f;font-weight:bold">const</span> Type lhs_ty <span style="color:#666">=</span>
+        TritonType(b, dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape().element_type());
+    <span style="color:#a2f;font-weight:bold">const</span> Type rhs_ty <span style="color:#666">=</span>
+        TritonType(b, dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>shape().element_type());
+    CHECK(lhs_ty <span style="color:#666">==</span> rhs_ty);
+    dot_input_ty <span style="color:#666">=</span> lhs_ty;
+  }
+  <span style="color:#080;font-style:italic">// TODO(b/266862493): Accumulator can be integer too.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// Otherwise only f64 x f64 -&gt; f64 uses f64 accumulator.
+</span><span style="color:#080;font-style:italic"></span>  mlir<span style="color:#666">::</span>FloatType acc_ty <span style="color:#666">=</span> (dot_output_ty.isF64() <span style="color:#666">&amp;&amp;</span> dot_input_ty.isF64())
+                               <span style="color:#666">?</span> b.getF64Type()
+                               <span style="color:#666">:</span> b.getF32Type();
+
+  <span style="color:#080;font-style:italic">// X block size is 32-bit, Y and Z are 16-bit. Use X for large dimensions.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">constexpr</span> <span style="color:#0b0;font-weight:bold">int64_t</span> kBlockCountYZLimit <span style="color:#666">=</span> <span style="color:#666">65536</span>;
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">bool</span> large_batch <span style="color:#666">=</span> batch_size <span style="color:#666">&gt;=</span> kBlockCountYZLimit;
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_batch <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>GetProgramIdOp<span style="color:#666">&gt;</span>(
+      large_batch <span style="color:#666">?</span> mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span><span style="color:#a0a000">X</span> : mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span>Y);
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_nc <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>GetProgramIdOp<span style="color:#666">&gt;</span>(large_batch <span style="color:#666">?</span> mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span><span style="color:#a0a000">Y</span>
+                                                         : mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span>X);
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_k <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>GetProgramIdOp<span style="color:#666">&gt;</span>(mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span>Z);
+
+  <span style="color:#080;font-style:italic">// In the imaginary situation where both batch size and grid_m * grid_n
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// are over 65535 we have to give up. Given the minimal m, n block sizes of 16
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// this requires at least 256 GB of output.
+</span><span style="color:#080;font-style:italic"></span>  CHECK_LT(batch_size <span style="color:#666">*</span> grid_m <span style="color:#666">*</span> grid_n,
+           kBlockCountYZLimit <span style="color:#666">*</span> kBlockCountYZLimit);
+
+  <span style="color:#a2f;font-weight:bold">const</span> LaunchDimensions launch_dimensions{
+      {large_batch <span style="color:#666">?</span> <span style="color:#a0a000">batch_size</span> : grid_m <span style="color:#666">*</span> grid_n,
+       large_batch <span style="color:#666">?</span> grid_m <span style="color:#666">*</span> <span style="color:#a0a000">grid_n</span> : batch_size, config.split_k()},
+      {config.num_warps() <span style="color:#666">*</span> WarpSize(), <span style="color:#666">1</span>, <span style="color:#666">1</span>}};
+
+  <span style="color:#a2f;font-weight:bold">auto</span> group_id <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>DivSIOp<span style="color:#666">&gt;</span>(pid_nc, CreateConst(b, i32_ty, width));
+  ma<span style="color:#666">::</span>ConstantOp group_m_op <span style="color:#666">=</span> CreateConst(b, i32_ty, group_m);
+  <span style="color:#a2f;font-weight:bold">auto</span> first_pid_m <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(group_id, group_m_op);
+  <span style="color:#a2f;font-weight:bold">auto</span> sub0 <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SubIOp<span style="color:#666">&gt;</span>(CreateConst(b, i32_ty, grid_m), first_pid_m);
+  <span style="color:#a2f;font-weight:bold">auto</span> group_size <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SelectOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt, sub0, group_m_op), sub0,
+      group_m_op);
+
+  <span style="color:#080;font-style:italic">// Extend int32 indexes to int64, if necessary.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> convert_scalar <span style="color:#666">=</span> [<span style="color:#666">&amp;</span>](Value value) <span style="color:#666">-&gt;</span> Value {
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (std<span style="color:#666">::</span>is_same_v<span style="color:#666">&lt;</span>IndexT, <span style="color:#0b0;font-weight:bold">int64_t</span><span style="color:#666">&gt;</span>) {
+      <span style="color:#a2f;font-weight:bold">return</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ExtSIOp<span style="color:#666">&gt;</span>(int_ty, value);
+    }
+    <span style="color:#a2f;font-weight:bold">return</span> value;
+  };
+  <span style="color:#a2f;font-weight:bold">auto</span> convert_range <span style="color:#666">=</span> [<span style="color:#666">&amp;</span>](Value value) <span style="color:#666">-&gt;</span> Value {
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (std<span style="color:#666">::</span>is_same_v<span style="color:#666">&lt;</span>IndexT, <span style="color:#0b0;font-weight:bold">int64_t</span><span style="color:#666">&gt;</span>) {
+      <span style="color:#a2f;font-weight:bold">auto</span> type <span style="color:#666">=</span> mlir<span style="color:#666">::</span>RankedTensorType<span style="color:#666">::</span>get(
+          value.dyn_cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>().getType().getShape(), int_ty);
+      <span style="color:#a2f;font-weight:bold">return</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ExtSIOp<span style="color:#666">&gt;</span>(type, value);
+    }
+    <span style="color:#a2f;font-weight:bold">return</span> value;
+  };
+
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_m <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(first_pid_m,
+                                    b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>RemSIOp<span style="color:#666">&gt;</span>(pid_nc, group_size));
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_m_stride <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(pid_m, CreateConst(b, i32_ty, block_m));
+  <span style="color:#080;font-style:italic">// TODO(b/270351731): Consider regenerating range_m to reduce register
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// pressure if we figure out how to make this optimization survive CSE.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> range_m <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(Splat(b, pid_m_stride, block_m), Range(b, block_m));
+
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_n <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>DivSIOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>RemSIOp<span style="color:#666">&gt;</span>(pid_nc, CreateConst(b, i32_ty, width)), group_size);
+  <span style="color:#a2f;font-weight:bold">auto</span> pid_n_stride <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(pid_n, CreateConst(b, i32_ty, block_n));
+  <span style="color:#a2f;font-weight:bold">auto</span> range_n <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(Splat(b, pid_n_stride, block_n), Range(b, block_n));
+
+  <span style="color:#a2f;font-weight:bold">auto</span> range_k <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      Splat(b, b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(pid_k, CreateConst(b, i32_ty, block_k)),
+            block_k),
+      Range(b, block_k));
+
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_m_1{block_m, <span style="color:#666">1</span>};
+  <span style="color:#a2f;font-weight:bold">auto</span> range_lhs_m <span style="color:#666">=</span> convert_range(
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>RemSIOp<span style="color:#666">&gt;</span>(range_m, CreateConst(b, i32_ty, m, block_m)));
+  <span style="color:#a2f;font-weight:bold">auto</span> lhs_offsets_m <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_lhs_m, <span style="color:#666">1</span>),
+                           CreateConst(b, int_ty, stride_lhs_m, shape_m_1));
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_1_k{<span style="color:#666">1</span>, block_k};
+  <span style="color:#a2f;font-weight:bold">auto</span> lhs_offsets_k <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(convert_range(range_k), <span style="color:#666">0</span>),
+      CreateConst(b, int_ty, stride_lhs_k, shape_1_k));
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_m_k{block_m, block_k};
+  <span style="color:#a2f;font-weight:bold">auto</span> lhs_offset_batch <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_lhs_batch));
+  <span style="color:#a2f;font-weight:bold">auto</span> lhs_offsets_init <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      Broadcast(b, lhs_offsets_m.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_m_k),
+      Broadcast(b, lhs_offsets_k.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_m_k));
+  lhs_offsets_init <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      lhs_offsets_init, Splat(b, lhs_offset_batch, shape_m_k));
+
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_k_1{block_k, <span style="color:#666">1</span>};
+  <span style="color:#a2f;font-weight:bold">auto</span> rhs_offsets_k <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(convert_range(range_k), <span style="color:#666">1</span>),
+      CreateConst(b, int_ty, stride_rhs_k, shape_k_1));
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_1_n{<span style="color:#666">1</span>, block_n};
+  <span style="color:#a2f;font-weight:bold">auto</span> range_rhs_n <span style="color:#666">=</span> convert_range(
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>RemSIOp<span style="color:#666">&gt;</span>(range_n, CreateConst(b, i32_ty, n, block_n)));
+  <span style="color:#a2f;font-weight:bold">auto</span> rhs_offsets_n <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_rhs_n, <span style="color:#666">0</span>),
+                           CreateConst(b, int_ty, stride_rhs_n, shape_1_n));
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_k_n{block_k, block_n};
+  <span style="color:#a2f;font-weight:bold">auto</span> rhs_offset_batch <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_rhs_batch));
+  <span style="color:#a2f;font-weight:bold">auto</span> rhs_offsets_init <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      Broadcast(b, rhs_offsets_k.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_k_n),
+      Broadcast(b, rhs_offsets_n.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_k_n));
+  rhs_offsets_init <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      rhs_offsets_init, Splat(b, rhs_offset_batch, shape_k_n));
+  SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span>, <span style="color:#666">2</span><span style="color:#666">&gt;</span> shape_m_n{block_m, block_n};
+  ma<span style="color:#666">::</span>ConstantOp accumulator_init <span style="color:#666">=</span> CreateConst(b, acc_ty, <span style="color:#666">0</span>, shape_m_n);
+
+  <span style="color:#a2f;font-weight:bold">auto</span> body_builder <span style="color:#666">=</span> [<span style="color:#666">&amp;</span>](mlir<span style="color:#666">::</span>OpBuilder<span style="color:#666">&amp;</span>, mlir<span style="color:#666">::</span>Location, Value ki,
+                          mlir<span style="color:#666">::</span>ValueRange iterArgs) {
+    Value lhs_offsets <span style="color:#666">=</span> iterArgs[<span style="color:#666">0</span>];
+    Value rhs_offsets <span style="color:#666">=</span> iterArgs[<span style="color:#666">1</span>];
+    Value accumulator <span style="color:#666">=</span> iterArgs[<span style="color:#666">2</span>];
+    Value lhs_mask <span style="color:#666">=</span> <span style="color:#a2f;font-weight:bold">nullptr</span>;
+    Value rhs_mask <span style="color:#666">=</span> <span style="color:#a2f;font-weight:bold">nullptr</span>;
+    <span style="color:#080;font-style:italic">// TODO(b/269726484): Peel the loop instead of inserting a masked load in
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// every iteration, even the ones that do not need it.
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">bool</span> need_masking <span style="color:#666">=</span> k <span style="color:#666">%</span> (block_k <span style="color:#666">*</span> config.split_k()) <span style="color:#666">&gt;</span> <span style="color:#666">0</span>;
+    <span style="color:#a2f;font-weight:bold">if</span> (need_masking) {
+      <span style="color:#a2f;font-weight:bold">auto</span> elements_in_tile <span style="color:#666">=</span>
+          b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SubIOp<span style="color:#666">&gt;</span>(CreateConst(b, i32_ty, k), ki);
+      lhs_mask <span style="color:#666">=</span>
+          Broadcast(b,
+                    b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt,
+                                         b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_k, <span style="color:#666">0</span>),
+                                         Splat(b, elements_in_tile, shape_1_k))
+                        .getResult()
+                        .<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                    shape_m_k);
+      rhs_mask <span style="color:#666">=</span>
+          Broadcast(b,
+                    b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt,
+                                         b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_k, <span style="color:#666">1</span>),
+                                         Splat(b, elements_in_tile, shape_k_1))
+                        .getResult()
+                        .<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                    shape_k_n);
+    }
+
+    <span style="color:#080;font-style:italic">// For now use one shape for LHS inputs and one for RHS.
+</span><span style="color:#080;font-style:italic"></span>    absl<span style="color:#666">::</span>flat_hash_map<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span>, Value<span style="color:#666">&gt;</span> values_lhs;
+    Value dot_input_lhs <span style="color:#666">=</span>
+        EmitScope(b, libdevice_path, fn,
+                  dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>MakeInstructionPostOrderFrom(
+                      <span style="color:#a2f;font-weight:bold">const_cast</span><span style="color:#666">&lt;</span>HloInstruction<span style="color:#666">&amp;&gt;</span>(<span style="color:#666">*</span>dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>))),
+                  values_lhs, lhs_offsets, lhs_mask);
+    absl<span style="color:#666">::</span>flat_hash_map<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span>, Value<span style="color:#666">&gt;</span> values_rhs;
+    Value dot_input_rhs <span style="color:#666">=</span>
+        EmitScope(b, libdevice_path, fn,
+                  dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>MakeInstructionPostOrderFrom(
+                      <span style="color:#a2f;font-weight:bold">const_cast</span><span style="color:#666">&lt;</span>HloInstruction<span style="color:#666">&amp;&gt;</span>(<span style="color:#666">*</span>dot_instr<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>))),
+                  values_rhs, rhs_offsets, rhs_mask);
+
+    <span style="color:#a2f;font-weight:bold">if</span> (need_masking) {
+      dot_input_lhs <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SelectOp<span style="color:#666">&gt;</span>(lhs_mask, dot_input_lhs,
+                                             ZerosLike(b, dot_input_lhs));
+      dot_input_rhs <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SelectOp<span style="color:#666">&gt;</span>(rhs_mask, dot_input_rhs,
+                                             ZerosLike(b, dot_input_rhs));
+    }
+
+    <span style="color:#a2f;font-weight:bold">auto</span> accumulator_next <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>DotOp<span style="color:#666">&gt;</span>(
+        dot_input_lhs, dot_input_rhs, accumulator,
+        <span style="color:#080;font-style:italic">/*allowTF32=*/</span>tsl<span style="color:#666">::</span>tensor_float_32_execution_enabled());
+
+    Value lhs_offsets_next <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+        lhs_offsets,
+        CreateConst(b, int_ty, block_k <span style="color:#666">*</span> config.split_k() <span style="color:#666">*</span> stride_lhs_k,
+                    shape_m_k));
+    Value rhs_offsets_next <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+        rhs_offsets,
+        CreateConst(b, int_ty, block_k <span style="color:#666">*</span> config.split_k() <span style="color:#666">*</span> stride_rhs_k,
+                    shape_k_n));
+
+    b.create<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>scf<span style="color:#666">::</span>YieldOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>ValueRange{lhs_offsets_next, rhs_offsets_next, accumulator_next});
+  };
+  Value acc_final <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>scf<span style="color:#666">::</span>ForOp<span style="color:#666">&gt;</span>(
+           <span style="color:#080;font-style:italic">/*lowerBound=*/</span>b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ConstantIntOp<span style="color:#666">&gt;</span>(<span style="color:#666">0</span>, <span style="color:#080;font-style:italic">/*width=*/</span><span style="color:#666">32</span>),
+           <span style="color:#080;font-style:italic">/*upperBound=*/</span>b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ConstantIntOp<span style="color:#666">&gt;</span>(k, <span style="color:#080;font-style:italic">/*width=*/</span><span style="color:#666">32</span>),
+           <span style="color:#080;font-style:italic">/*step=*/</span>
+           b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ConstantIntOp<span style="color:#666">&gt;</span>(block_k <span style="color:#666">*</span> config.split_k(),
+                                       <span style="color:#080;font-style:italic">/*width=*/</span><span style="color:#666">32</span>),
+           <span style="color:#080;font-style:italic">/*iterArgs=*/</span>
+           mlir<span style="color:#666">::</span>ValueRange{lhs_offsets_init, rhs_offsets_init,
+                            accumulator_init},
+           body_builder)
+          .getResult(<span style="color:#666">2</span>);
+  absl<span style="color:#666">::</span>flat_hash_map<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span>, Value<span style="color:#666">&gt;</span> values_out;
+  values_out[dot_instr] <span style="color:#666">=</span>
+      Cast(b, acc_final, TritonType(b, dot_instr<span style="color:#666">-&gt;</span>shape().element_type()));
+
+  <span style="color:#080;font-style:italic">// Output tile offsets.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> out_offset_batch <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_out_batch));
+  <span style="color:#a2f;font-weight:bold">auto</span> out_offsets_m <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(convert_range(range_m), <span style="color:#666">1</span>),
+      CreateConst(b, int_ty, stride_out_m, shape_m_1));
+
+  <span style="color:#a2f;font-weight:bold">auto</span> out_offsets_n <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(convert_range(range_n), <span style="color:#666">0</span>),
+      CreateConst(b, int_ty, stride_out_n, shape_1_n));
+  <span style="color:#a2f;font-weight:bold">auto</span> out_offsets <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(Splat(b, out_offset_batch, shape_m_1),
+                                          out_offsets_m);
+  out_offsets <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(
+      Broadcast(b, out_offsets.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_m_n),
+      Broadcast(b, out_offsets_n.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(),
+                shape_m_n));
+
+  <span style="color:#080;font-style:italic">// Output tile mask: check that the indices are within [M, N].
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> rm_cmp <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt,
+                                     b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_m, <span style="color:#666">1</span>),
+                                     CreateConst(b, i32_ty, m, shape_m_1));
+  <span style="color:#a2f;font-weight:bold">auto</span> rn_cmp <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt,
+                                     b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ExpandDimsOp<span style="color:#666">&gt;</span>(range_n, <span style="color:#666">0</span>),
+                                     CreateConst(b, i32_ty, n, shape_1_n));
+  <span style="color:#a2f;font-weight:bold">auto</span> out_mask <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AndIOp<span style="color:#666">&gt;</span>(
+      Broadcast(b, rm_cmp.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(), shape_m_n),
+      Broadcast(b, rn_cmp.getResult().<span style="color:#a2f;font-weight:bold">template</span> cast<span style="color:#666">&lt;</span>TensorValue<span style="color:#666">&gt;</span>(), shape_m_n));
+
+  <span style="color:#080;font-style:italic">// Collect all instructions of the dot&#39;s output scope.
+</span><span style="color:#080;font-style:italic"></span>  absl<span style="color:#666">::</span>flat_hash_set<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*&gt;</span> to_order;
+  {
+    std<span style="color:#666">::</span>queue<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*&gt;</span> to_add;
+    <span style="color:#a2f;font-weight:bold">if</span> (root <span style="color:#666">!=</span> dot_instr) {
+      to_add.push(root);
+    }
+    <span style="color:#a2f;font-weight:bold">while</span> (<span style="color:#666">!</span>to_add.empty()) {
+      <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> current <span style="color:#666">=</span> to_add.front();
+      <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> <span style="color:#a0a000">operand</span> : current<span style="color:#666">-&gt;</span>operands()) {
+        <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>to_order.contains(operand)) {
+          <span style="color:#a2f;font-weight:bold">if</span> (operand <span style="color:#666">!=</span> dot_instr) {
+            to_add.push(operand);
+          }
+        }
+      }
+      CHECK(to_order.insert(current).second);
+      to_add.pop();
+    }
+  }
+  <span style="color:#080;font-style:italic">// Order them producers before consumers.
+</span><span style="color:#080;font-style:italic"></span>  std<span style="color:#666">::</span>vector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*&gt;</span> to_emit;
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> <span style="color:#a0a000">hlo</span> :
+       dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>MakeInstructionPostOrder()) {
+    <span style="color:#a2f;font-weight:bold">if</span> (to_order.contains(hlo)) {
+      to_emit.push_back(hlo);
+    }
+  }
+  <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>to_emit.empty()) {
+    EmitScope(b, libdevice_path, fn, to_emit, values_out, out_offsets,
+              out_mask);
+  }
+
+  <span style="color:#a2f;font-weight:bold">auto</span> out_offset_split_k <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(
+      convert_scalar(pid_k), CreateConst(b, int_ty, stride_out_split_k));
+  out_offsets <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddIOp<span style="color:#666">&gt;</span>(out_offsets,
+                                     Splat(b, out_offset_split_k, shape_m_n));
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>;
+       i <span style="color:#666">&lt;</span> fn.getNumArguments() <span style="color:#666">-</span> dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>num_parameters(); <span style="color:#666">++</span>i) {
+    Value out <span style="color:#666">=</span> fn.getArgument(i <span style="color:#666">+</span> dot_instr<span style="color:#666">-&gt;</span>parent()<span style="color:#666">-&gt;</span>num_parameters());
+    <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> producer <span style="color:#666">=</span>
+        root<span style="color:#666">-&gt;</span>shape().IsTuple() <span style="color:#666">?</span> root<span style="color:#666">-&gt;</span>operand(i) <span style="color:#666">:</span> root;
+    b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>StoreOp<span style="color:#666">&gt;</span>(AddPtr(b, Splat(b, out, shape_m_n), out_offsets),
+                          values_out[producer], out_mask,
+                          mt<span style="color:#666">::</span>CacheModifier<span style="color:#666">::</span>NONE, mt<span style="color:#666">::</span>EvictionPolicy<span style="color:#666">::</span>NORMAL);
+  }
+  <span style="color:#a2f;font-weight:bold">return</span> launch_dimensions;
+}
+</code></pre></div><h1 id="softmax">softmax</h1>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-c++" data-lang="c++">StatusOr<span style="color:#666">&lt;</span>LaunchDimensions<span style="color:#666">&gt;</span> SoftMax(
+    mlir<span style="color:#666">::</span>OpBuilder builder, absl<span style="color:#666">::</span>string_view libdevice_path,
+    <span style="color:#a2f;font-weight:bold">const</span> HloComputation<span style="color:#666">*</span> computation, mlir<span style="color:#666">::</span>triton<span style="color:#666">::</span>FuncOp fn,
+    <span style="color:#a2f;font-weight:bold">const</span> tensorflow<span style="color:#666">::</span>AutotuneResult<span style="color:#666">::</span>TritonGemmKey<span style="color:#666">&amp;</span> config, <span style="color:#0b0;font-weight:bold">int</span>) {
+  <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> root <span style="color:#666">=</span> computation<span style="color:#666">-&gt;</span>root_instruction();
+  <span style="color:#a2f;font-weight:bold">auto</span> loc <span style="color:#666">=</span> mlir<span style="color:#666">::</span>NameLoc<span style="color:#666">::</span>get(builder.getStringAttr(root<span style="color:#666">-&gt;</span>name()));
+  mlir<span style="color:#666">::</span>ImplicitLocOpBuilder b(loc, builder);
+
+  <span style="color:#080;font-style:italic">// Assumptions we make about the matcher:
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   * matches *exactly* softmax on the last axis, not just something
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//     softmax-like
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   * the implementation of softmax is like in jax.nn.softmax
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   * all the shapes have canonical layout (logical layout = physical layout)
+</span><span style="color:#080;font-style:italic"></span>
+  <span style="color:#080;font-style:italic">// TODO(bchetioui): generalise to Softmax-like patterns involving elementwise
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// ops.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// TODO(bchetioui): allow doing several rows per block (e.g. for when rows
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// are smaller than the minimum transaction size)
+</span><span style="color:#080;font-style:italic"></span>
+  CHECK_EQ(root<span style="color:#666">-&gt;</span>opcode(), HloOpcode<span style="color:#666">::</span>kDivide);
+  CHECK_EQ(root<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>opcode(), HloOpcode<span style="color:#666">::</span>kBroadcast);
+
+  <span style="color:#a2f;font-weight:bold">const</span> HloInstruction<span style="color:#666">*</span> reduce <span style="color:#666">=</span> root<span style="color:#666">-&gt;</span>operand(<span style="color:#666">1</span>)<span style="color:#666">-&gt;</span>operand(<span style="color:#666">0</span>);
+  Shape root_shape <span style="color:#666">=</span> root<span style="color:#666">-&gt;</span>shape();
+
+  CHECK_EQ(reduce<span style="color:#666">-&gt;</span>opcode(), HloOpcode<span style="color:#666">::</span>kReduce);
+  CHECK_EQ(reduce<span style="color:#666">-&gt;</span>dimensions().size(), <span style="color:#666">1</span>);
+  CHECK_EQ(reduce<span style="color:#666">-&gt;</span>dimensions()[<span style="color:#666">0</span>], root_shape.rank() <span style="color:#666">-</span> <span style="color:#666">1</span>);
+
+  <span style="color:#0b0;font-weight:bold">int</span> row_len <span style="color:#666">=</span> root_shape.dimensions_minor(<span style="color:#666">0</span>);
+  <span style="color:#0b0;font-weight:bold">int</span> block_row <span style="color:#666">=</span> <span style="color:#666">1</span>;
+
+  <span style="color:#080;font-style:italic">// block_row must be a power of two.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">while</span> (block_row <span style="color:#666">&lt;</span> row_len) {
+    block_row <span style="color:#666">*=</span> <span style="color:#666">2</span>;
+  }
+
+  <span style="color:#0b0;font-weight:bold">int</span> num_rows <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> minor_axis <span style="color:#666">=</span> <span style="color:#666">1</span>; minor_axis <span style="color:#666">&lt;</span> root_shape.rank(); <span style="color:#666">++</span>minor_axis)
+    num_rows <span style="color:#666">*=</span> root_shape.dimensions_minor(minor_axis);
+
+  <span style="color:#a2f;font-weight:bold">const</span> LaunchDimensions launch_dimensions{
+      {num_rows, <span style="color:#666">1</span>, <span style="color:#666">1</span>}, {config.num_warps() <span style="color:#666">*</span> WarpSize(), <span style="color:#666">1</span>, <span style="color:#666">1</span>}};
+
+  <span style="color:#080;font-style:italic">// In the vanilla softmax case, the output type is the same as the input type.
+</span><span style="color:#080;font-style:italic"></span>  PrimitiveType root_element_type <span style="color:#666">=</span> root<span style="color:#666">-&gt;</span>shape().element_type();
+  PrimitiveType producer_element_type <span style="color:#666">=</span>
+      computation<span style="color:#666">-&gt;</span>parameter_instruction(<span style="color:#666">0</span>)<span style="color:#666">-&gt;</span>shape().element_type();
+
+  CHECK_EQ(root_element_type, producer_element_type);
+
+  <span style="color:#080;font-style:italic">// We assume that both the input and the result use a floating point data
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// type.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> root_ty <span style="color:#666">=</span> TritonType(b, root_element_type).cast<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>FloatType<span style="color:#666">&gt;</span>();
+
+  <span style="color:#080;font-style:italic">// softmax_kernel(input_ptr, output_ptr, num_rows, row_len, block_row) {
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   row_index = tl.program_id(0)
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   row_stride = row_len
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   offset = row_index * row_stride
+</span><span style="color:#080;font-style:italic"></span>  Value row_index <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>GetProgramIdOp<span style="color:#666">&gt;</span>(mt<span style="color:#666">::</span>ProgramIDDim<span style="color:#666">::</span>X);
+  Value row_stride <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ConstantIntOp<span style="color:#666">&gt;</span>(row_len, <span style="color:#080;font-style:italic">/*width=*/</span><span style="color:#666">32</span>);
+  Value offset <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>MulIOp<span style="color:#666">&gt;</span>(row_index, row_stride);
+
+  <span style="color:#080;font-style:italic">//   input_ptr += offset
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//   output_ptr += offset
+</span><span style="color:#080;font-style:italic"></span>  Value input_ptr <span style="color:#666">=</span> AddPtr(b, fn.getArgument(<span style="color:#666">0</span>), offset);
+  Value output_ptr <span style="color:#666">=</span> AddPtr(b, fn.getArgument(<span style="color:#666">1</span>), offset);
+
+  <span style="color:#080;font-style:italic">//   row_tile = tl.arange(0, block_row)
+</span><span style="color:#080;font-style:italic"></span>  Value row_tile <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>MakeRangeOp<span style="color:#666">&gt;</span>(
+      mlir<span style="color:#666">::</span>RankedTensorType<span style="color:#666">::</span>get(block_row, b.getI32Type()), <span style="color:#666">0</span>, block_row);
+
+  <span style="color:#080;font-style:italic">//   mask = row_tile &lt; row_stride
+</span><span style="color:#080;font-style:italic"></span>  Value splat_row_stride <span style="color:#666">=</span> Splat(b, row_stride, block_row);
+  Value mask <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpIOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpIPredicate<span style="color:#666">::</span>slt, row_tile, splat_row_stride);
+
+  <span style="color:#080;font-style:italic">//   row = tl.load(input_ptr + row_tile, mask=row_tile &lt; row_len,
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">//                 other=float(&#39;-inf&#39;))
+</span><span style="color:#080;font-style:italic"></span>  Value splat_input_ptr <span style="color:#666">=</span> Splat(b, input_ptr, block_row);
+  Value load_ptrs <span style="color:#666">=</span> AddPtr(b, splat_input_ptr, row_tile);
+  llvm<span style="color:#666">::</span>APFloat minus_inf <span style="color:#666">=</span>
+      llvm<span style="color:#666">::</span>APFloat<span style="color:#666">::</span>getInf(root_ty.getFloatSemantics(), <span style="color:#080;font-style:italic">/*Negative=*/</span><span style="color:#a2f">true</span>);
+
+  Value other <span style="color:#666">=</span> Splat(b, b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>ConstantFloatOp<span style="color:#666">&gt;</span>(minus_inf, root_ty),
+                      row_tile.getType().cast<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>ShapedType<span style="color:#666">&gt;</span>().getShape());
+  Value row <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>LoadOp<span style="color:#666">&gt;</span>(load_ptrs, mask, other, mt<span style="color:#666">::</span>CacheModifier<span style="color:#666">::</span>NONE,
+                           mt<span style="color:#666">::</span>EvictionPolicy<span style="color:#666">::</span>NORMAL, <span style="color:#080;font-style:italic">/*isVolatile=*/</span><span style="color:#a2f">false</span>);
+
+  <span style="color:#080;font-style:italic">//   row_max = tl.max(row, axis=0)
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// Triton actually only performs reductions on float32 inputs, and we must
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// thus upcast/downcast our input if its data type is different.
+</span><span style="color:#080;font-style:italic"></span>  Value casted_row <span style="color:#666">=</span> Cast(b, row, b.getF32Type());
+
+  mt<span style="color:#666">::</span>ReduceOp row_max <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ReduceOp<span style="color:#666">&gt;</span>(SmallVector<span style="color:#666">&lt;</span>Value<span style="color:#666">&gt;</span>({casted_row}), <span style="color:#666">0</span>);
+
+  {
+    mlir<span style="color:#666">::</span>Block<span style="color:#666">*</span> max_reducer <span style="color:#666">=</span>
+        b.createBlock(<span style="color:#666">&amp;</span>row_max<span style="color:#666">-&gt;</span>getRegion(<span style="color:#666">0</span>), {},
+                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+
+    b.setInsertionPointToStart(max_reducer);
+    <span style="color:#080;font-style:italic">// Lowering for MaxFOp from TritonGPU to LLVM is not implemented, so we use
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// select and compare instead.
+</span><span style="color:#080;font-style:italic"></span>    Value cmpOp <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>CmpFOp<span style="color:#666">&gt;</span>(ma<span style="color:#666">::</span>CmpFPredicate<span style="color:#666">::</span>OGE,
+                                       max_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">0</span>),
+                                       max_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">1</span>));
+    Value selectOp <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SelectOp<span style="color:#666">&gt;</span>(cmpOp, max_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">0</span>),
+                                            max_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">1</span>));
+
+    b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ReduceReturnOp<span style="color:#666">&gt;</span>(SmallVector<span style="color:#666">&lt;</span>Value<span style="color:#666">&gt;</span>({selectOp}));
+    b.setInsertionPointAfter(row_max);
+  }
+
+  <span style="color:#080;font-style:italic">//   numerator = tl.exp(row - row_max)
+</span><span style="color:#080;font-style:italic"></span>  Value splat_row_max <span style="color:#666">=</span> Splat(b, row_max<span style="color:#666">-&gt;</span>getResult(<span style="color:#666">0</span>), block_row);
+  Value bounded_row <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>SubFOp<span style="color:#666">&gt;</span>(casted_row, splat_row_max);
+  Value numerator <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>math<span style="color:#666">::</span>ExpOp<span style="color:#666">&gt;</span>(bounded_row);
+
+  <span style="color:#080;font-style:italic">//   denominator = tl.sum(numerator, axis=0)
+</span><span style="color:#080;font-style:italic"></span>  mt<span style="color:#666">::</span>ReduceOp denominator <span style="color:#666">=</span>
+      b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ReduceOp<span style="color:#666">&gt;</span>(SmallVector<span style="color:#666">&lt;</span>Value<span style="color:#666">&gt;</span>({numerator}), <span style="color:#666">0</span>);
+
+  {
+    mlir<span style="color:#666">::</span>Block<span style="color:#666">*</span> sum_reducer <span style="color:#666">=</span>
+        b.createBlock(<span style="color:#666">&amp;</span>denominator<span style="color:#666">-&gt;</span>getRegion(<span style="color:#666">0</span>), {},
+                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+
+    b.setInsertionPointToStart(sum_reducer);
+    Value addOp <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>AddFOp<span style="color:#666">&gt;</span>(sum_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">0</span>),
+                                       sum_reducer<span style="color:#666">-&gt;</span>getArgument(<span style="color:#666">1</span>));
+    b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>ReduceReturnOp<span style="color:#666">&gt;</span>(SmallVector<span style="color:#666">&lt;</span>Value<span style="color:#666">&gt;</span>({addOp}));
+    b.setInsertionPointAfter(denominator);
+  }
+
+  <span style="color:#080;font-style:italic">//   result = (numerator / denominator).to(output_ptr.dtype.element_ty)
+</span><span style="color:#080;font-style:italic"></span>  Value splat_denominator <span style="color:#666">=</span> Splat(b, denominator<span style="color:#666">-&gt;</span>getResult(<span style="color:#666">0</span>), block_row);
+  Value division <span style="color:#666">=</span> b.create<span style="color:#666">&lt;</span>ma<span style="color:#666">::</span>DivFOp<span style="color:#666">&gt;</span>(numerator, splat_denominator);
+  Value result <span style="color:#666">=</span> Cast(b, division, root_ty);
+
+  <span style="color:#080;font-style:italic">//   tl.store(output_ptr + row_tile, result, mask=mask)
+</span><span style="color:#080;font-style:italic"></span>  Value splat_output_ptr <span style="color:#666">=</span> Splat(b, output_ptr, block_row);
+  Value store_ptrs <span style="color:#666">=</span> AddPtr(b, splat_output_ptr, row_tile);
+
+  b.create<span style="color:#666">&lt;</span>mt<span style="color:#666">::</span>StoreOp<span style="color:#666">&gt;</span>(store_ptrs, result, mask, mt<span style="color:#666">::</span>CacheModifier<span style="color:#666">::</span>NONE,
+                        mt<span style="color:#666">::</span>EvictionPolicy<span style="color:#666">::</span>NORMAL);
+  <span style="color:#080;font-style:italic">// }
+</span><span style="color:#080;font-style:italic"></span>
+  <span style="color:#a2f;font-weight:bold">return</span> launch_dimensions;
+}
+</code></pre></div>
+    </div>
+
+    
+        <div class="tags">
+            
+                <a href="https://yellowhch.github.io/tags/triton">Triton</a>
+            
+                <a href="https://yellowhch.github.io/tags/xla">XLA</a>
+            
+                <a href="https://yellowhch.github.io/tags/framework">Framework</a>
+            
+        </div>
+    
+    
+    
+
+</section>
+
+
+    </main>
+    
+    <footer id="footer">
+    
+        <div id="social">
+
+
+    <a class="symbol" href="https://github.com/YellowHCH/" rel="me" target="_blank">
+        
+        <svg fill="#bbbbbb" width="28" height="28"  viewBox="0 0 72 72" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    
+    <title>Github</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Social-Icons---Rounded-Black" transform="translate(-264.000000, -939.000000)">
+            <g id="Github" transform="translate(264.000000, 939.000000)">
+                <path d="M8,72 L64,72 C68.418278,72 72,68.418278 72,64 L72,8 C72,3.581722 68.418278,-8.11624501e-16 64,0 L8,0 C3.581722,8.11624501e-16 -5.41083001e-16,3.581722 0,8 L0,64 C5.41083001e-16,68.418278 3.581722,72 8,72 Z" id="Rounded" fill="#bbbbbb"></path>
+                <path d="M35.9985,13 C22.746,13 12,23.7870921 12,37.096644 C12,47.7406712 18.876,56.7718301 28.4145,59.9584121 C29.6145,60.1797862 30.0525,59.4358488 30.0525,58.7973276 C30.0525,58.2250681 30.0315,56.7100863 30.0195,54.6996482 C23.343,56.1558981 21.9345,51.4693938 21.9345,51.4693938 C20.844,48.6864054 19.2705,47.9454799 19.2705,47.9454799 C17.091,46.4500754 19.4355,46.4801943 19.4355,46.4801943 C21.843,46.6503662 23.1105,48.9634994 23.1105,48.9634994 C25.2525,52.6455377 28.728,51.5823398 30.096,50.9649018 C30.3135,49.4077535 30.9345,48.3460615 31.62,47.7436831 C26.2905,47.1352808 20.688,45.0691228 20.688,35.8361671 C20.688,33.2052792 21.6225,31.0547881 23.1585,29.3696344 C22.911,28.7597262 22.0875,26.3110578 23.3925,22.9934585 C23.3925,22.9934585 25.4085,22.3459017 29.9925,25.4632101 C31.908,24.9285993 33.96,24.6620468 36.0015,24.6515052 C38.04,24.6620468 40.0935,24.9285993 42.0105,25.4632101 C46.5915,22.3459017 48.603,22.9934585 48.603,22.9934585 C49.9125,26.3110578 49.089,28.7597262 48.8415,29.3696344 C50.3805,31.0547881 51.309,33.2052792 51.309,35.8361671 C51.309,45.0917119 45.6975,47.1292571 40.3515,47.7256117 C41.2125,48.4695491 41.9805,49.9393525 41.9805,52.1877301 C41.9805,55.4089489 41.9505,58.0067059 41.9505,58.7973276 C41.9505,59.4418726 42.3825,60.1918338 43.6005,59.9554002 C53.13,56.7627944 60,47.7376593 60,37.096644 C60,23.7870921 49.254,13 35.9985,13" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>
+    </a>
+
+
+</div>
+
+    
+
+    <div class="copyright">
+    
+       © Copyright 
+       2024 
+       <span class="split">
+        <svg fill="#bbbbbb" width="15" height="15" version="1.1" id="heart-15" xmlns="http://www.w3.org/2000/svg" width="15px" height="15px" viewBox="0 0 15 15">
+  <path d="M13.91,6.75c-1.17,2.25-4.3,5.31-6.07,6.94c-0.1903,0.1718-0.4797,0.1718-0.67,0C5.39,12.06,2.26,9,1.09,6.75&#xA;&#x9;C-1.48,1.8,5-1.5,7.5,3.45C10-1.5,16.48,1.8,13.91,6.75z"/>
+</svg>
+       </span>
+       ChenhuiHuang
+    
+    </div>
+
+    
+</footer>
+
+
+
+  </body>
+</html>

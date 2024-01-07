@@ -4,8 +4,58 @@
   
   <url>
     <loc>https://yellowhch.github.io/</loc>
-    <lastmod>2023-12-15T00:00:00+00:00</lastmod>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
     <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/framework/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/post/how-does-xla-integrate-triton/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/post/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/triton/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/xla/</loc>
+    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/graph-compiler/</loc>
+    <lastmod>2023-12-19T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/inductor/</loc>
+    <lastmod>2023-12-19T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/post/inductor-code-review/</loc>
+    <lastmod>2023-12-19T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/torch/</loc>
+    <lastmod>2023-12-19T00:00:00+00:00</lastmod>
   </url>
   
   <url>
@@ -20,21 +70,6 @@
   
   <url>
     <loc>https://yellowhch.github.io/tags/matmul/</loc>
-    <lastmod>2023-12-15T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/post/</loc>
-    <lastmod>2023-12-15T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/tags/</loc>
-    <lastmod>2023-12-15T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/tags/triton/</loc>
     <lastmod>2023-12-15T00:00:00+00:00</lastmod>
   </url>
   
