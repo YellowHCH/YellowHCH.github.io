@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>C&#43;&#43; on ch_huang</title>
+    <link>https://yellowhch.github.io/tags/c&#43;&#43;/</link>
+    <description>Recent content in C&#43;&#43; on ch_huang</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    
+	<atom:link href="https://yellowhch.github.io/tags/c++/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>C&#43;&#43;17 new feature</title>
+      <link>https://yellowhch.github.io/post/c&#43;&#43;17/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/c&#43;&#43;17/</guid>
+      <description>#1. structured binding Binds the specified names to subobjects or elements of the initializer. Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type. 类似引用，可以绑定到已经存在的结构化对象的成员，但不一定</description>
+    </item>
+    
+  </channel>
+</rss>

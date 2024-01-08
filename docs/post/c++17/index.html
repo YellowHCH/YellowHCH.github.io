@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>C&#43;&#43;17 new feature | ch_huang</title>
+
+    <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">    
+<meta name="viewport" content="width=device-width,minimum-scale=1">
+<meta name="description" content="#1. structured binding Binds the specified names to subobjects or elements of the initializer. Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type. 类似引用，可以绑定到已经存在的结构化对象的成员，但不一定">
+<meta name="generator" content="Hugo 0.68.3" />
+
+
+  <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+
+<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
+
+
+
+
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css" integrity="sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js" integrity="sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js" integrity="sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl" crossorigin="anonymous"
+    onload="renderMathInElement(document.body);"></script>
+
+
+
+
+
+  </head>
+
+  <body>
+    <nav class="navigation">
+	
+		<a href="/"> <span class="arrow">←</span>Home</a>
+	
+	<a href="/posts">Archive</a>
+	<a href="/tags">Tags</a>
+	<a href="/about">About</a>
+
+	
+
+	
+</nav>
+
+
+    <main class="main">
+      
+
+<section id="single">
+    <h1 class="title">C&#43;&#43;17 new feature</h1>
+
+    <div class="tip">
+        <time datetime="0001-01-01 00:00:00 &#43;0000 UTC">Jan 1, 0001</time>
+        
+        <span class="split">
+          ·
+        </span>
+        <span>
+          6 minute read
+        </span>
+    </div>
+
+    
+    
+        
+  
+
+
+    
+
+
+    <div class="content">
+      <p>#1. <a href="https://en.cppreference.com/w/cpp/language/structured_binding" target="_blank" rel="noopener">structured binding</a></p>
+<blockquote>
+<p>Binds the specified names to subobjects or elements of the initializer.
+Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type.</p>
+</blockquote>
+<p><em>类似引用，可以绑定到已经存在的<strong>结构化</strong>对象的成员，但不一定是引用类型（即可以是copy）</em></p>
+<p>语法:
+<code>auto (thread local | static) ref-qualifier [identifier-list] = exp;</code>
+<code>auto (thread local | static) ref-qualifier [identifier-list]{exp};</code>
+<code>auto (thread local | static) ref-qualifier [identifier-list](exp);</code>
+其中，
+<code>ref-qualifier</code>: 可以选择是否是引用类型（&amp;,&amp;&amp;）或拷贝
+<code>identifier-list</code>: 列出被绑定的成员的别名</p>
+<p><strong>Case study</strong>:</p>
+<p>##1.1 bind to array</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_array -std=c++17 bind_array.cc
+</span><span style="color:#080;font-style:italic">// g++ -o bind_array -std=gnu++17 bind_array.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_array</span>() {
+  <span style="color:#0b0;font-weight:bold">int</span> a[<span style="color:#666">2</span>] <span style="color:#666">=</span> {<span style="color:#666">1</span>, <span style="color:#666">2</span>};
+  <span style="color:#080;font-style:italic">// NOTE. make a copy of a, and [x, y] refer to the copied temp array.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> [x, y] <span style="color:#666">=</span> a;
+  <span style="color:#080;font-style:italic">// NOTE. [xr, yr] refers to original array `a` directly.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[xr, yr] <span style="color:#666">=</span> a;
+
+  printf(<span style="color:#b44">&#34;original addr:%p</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)a);
+  printf(<span style="color:#b44">&#34;after cp, addr:%p,%p</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>x, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>y);
+  printf(<span style="color:#b44">&#34;after ref, addr:%p,%p</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>xr, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>yr);
+  printf(<span style="color:#b44">&#34;x,y={%d,%d}</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, x, y);
+  printf(<span style="color:#b44">&#34;xr,yr={%d,%d}</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, xr, yr);
+}
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  foo_bind_array();
+
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">original addr:0x7fffffffe2c8
+after cp, addr:0x7fffffffe2d0,0x7fffffffe2d4
+after ref, addr:0x7fffffffe2c8,0x7fffffffe2cc
+x,y<span style="color:#666">={</span>1,2<span style="color:#666">}</span>
+xr,yr<span style="color:#666">={</span>1,2<span style="color:#666">}</span>
+</code></pre></div><p>##1.2 bind to tuple</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_tuple -std=c++17 bind_tuple.cc
+</span><span style="color:#080;font-style:italic">// g++ -o bind_tuple -std=gnu++17 bind_tuple.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_tuple</span>() {
+  <span style="color:#0b0;font-weight:bold">float</span> x{<span style="color:#666">1.23</span>};
+  <span style="color:#0b0;font-weight:bold">char</span> y{<span style="color:#b44">&#39;x&#39;</span>};
+  <span style="color:#0b0;font-weight:bold">int</span> z{<span style="color:#666">996</span>};
+
+  printf(<span style="color:#b44">&#34;x:type(float), val(%f), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, x, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>x);
+  printf(<span style="color:#b44">&#34;y:type(char), val(%c), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, y, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>y);
+  printf(<span style="color:#b44">&#34;z:type(int), val(%d), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, z, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>z);
+
+  <span style="color:#080;font-style:italic">//std::tuple&lt;float &amp;, char &amp;&amp;, int&gt; tpl(x, std::move&lt;char&amp;&amp;&gt;(y), z);
+</span><span style="color:#080;font-style:italic"></span>  std<span style="color:#666">::</span>tuple<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">float</span> <span style="color:#666">&amp;</span>, <span style="color:#0b0;font-weight:bold">char</span> <span style="color:#666">&amp;&amp;</span>, <span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span> tpl(x, std<span style="color:#666">::</span>forward<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">char</span><span style="color:#666">&amp;&amp;&gt;</span>(y), z);
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[a, b, c] <span style="color:#666">=</span> tpl;
+
+  printf(<span style="color:#b44">&#34;a:type(float), val(%f), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, a, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>a);
+  printf(<span style="color:#b44">&#34;b:type(char), val(%c), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, b, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>b);
+  printf(<span style="color:#b44">&#34;c:type(int), val(%d), addr(%p)</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, c, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>c);
+
+  <span style="color:#080;font-style:italic">// clang-format off
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// using Tpl = const std::tuple&lt;float&amp;, char&amp;&amp;, int&gt;;
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// a names a structured binding that refers to x (initialized from get&lt;0&gt;(tpl))
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// decltype(a) is std::tuple_element&lt;0, Tpl&gt;::type, i.e. float&amp;
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// b names a structured binding that refers to y (initialized from get&lt;1&gt;(tpl))
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// decltype(b) is std::tuple_element&lt;1, Tpl&gt;::type, i.e. char&amp;&amp;
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// c names a structured binding that refers to the third component of tpl, get&lt;2&gt;(tpl)
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// decltype(c) is std::tuple_element&lt;2, Tpl&gt;::type, i.e. const int
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// clang-format on
+</span><span style="color:#080;font-style:italic"></span>}
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  foo_bind_tuple();
+
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">x:type<span style="color:#666">(</span>float<span style="color:#666">)</span>, val<span style="color:#666">(</span>1.230000<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe298<span style="color:#666">)</span>
+y:type<span style="color:#666">(</span>char<span style="color:#666">)</span>, val<span style="color:#666">(</span>x<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe297<span style="color:#666">)</span>
+z:type<span style="color:#666">(</span>int<span style="color:#666">)</span>, val<span style="color:#666">(</span>996<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe29c<span style="color:#666">)</span>
+a:type<span style="color:#666">(</span>float<span style="color:#666">)</span>, val<span style="color:#666">(</span>1.230000<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe298<span style="color:#666">)</span>
+b:type<span style="color:#666">(</span>char<span style="color:#666">)</span>, val<span style="color:#666">(</span>x<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe297<span style="color:#666">)</span>
+c:type<span style="color:#666">(</span>int<span style="color:#666">)</span>, val<span style="color:#666">(</span>996<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe2c0<span style="color:#666">)</span>
+</code></pre></div><p>##1.3 bind struct data member</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_data_member -std=c++17 bind_data_member.cc
+</span><span style="color:#080;font-style:italic">// g++ -o bind_data_member -std=gnu++17 bind_data_member.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">S</span> {
+  <span style="color:#a2f;font-weight:bold">mutable</span> <span style="color:#0b0;font-weight:bold">int</span> <span style="color:#a0a000">x1</span> : <span style="color:#666">2</span>; <span style="color:#080;font-style:italic">// mutable data member, could be modified by const
+</span><span style="color:#080;font-style:italic"></span>                      <span style="color:#080;font-style:italic">// member function
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">volatile</span> <span style="color:#0b0;font-weight:bold">double</span> y1;
+
+  <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">dump</span>() {
+    printf(<span style="color:#b44">&#34;x1:%d,addr:%p,  y1:%lf, addr:%p</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, x1, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#a2f;font-weight:bold">this</span>, y1,
+           (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)<span style="color:#666">&amp;</span>y1);
+  }
+};
+
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_data_member_ref</span>() {
+  printf(<span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, __func__);
+  S s{<span style="color:#666">1</span>, <span style="color:#666">2.3</span>};
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[x, y] <span style="color:#666">=</span> s; <span style="color:#080;font-style:italic">// x is an int lvalue identifying the 2-bit bit-field
+</span><span style="color:#080;font-style:italic"></span>                          <span style="color:#080;font-style:italic">// y is a const volatile double lvalue
+</span><span style="color:#080;font-style:italic"></span>  printf(<span style="color:#b44">&#34;Before modify:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>);
+  s.dump();
+  x <span style="color:#666">=</span> <span style="color:#666">0</span>; <span style="color:#080;font-style:italic">// S.x1 is mutable data member, could be modified although [x, y] is
+</span><span style="color:#080;font-style:italic"></span>         <span style="color:#080;font-style:italic">// const value.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// y = -1.23; // Error: y is const-qualified
+</span><span style="color:#080;font-style:italic"></span>  printf(<span style="color:#b44">&#34;After modify:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>);
+  s.dump();
+}
+
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_data_member_cp</span>() {
+  printf(<span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, __func__);
+  S s{<span style="color:#666">1</span>, <span style="color:#666">2.3</span>};
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> [x, y] <span style="color:#666">=</span> s; <span style="color:#080;font-style:italic">// x is an int lvalue identifying the 2-bit bit-field
+</span><span style="color:#080;font-style:italic"></span>                          <span style="color:#080;font-style:italic">// y is a const volatile double lvalue
+</span><span style="color:#080;font-style:italic"></span>  printf(<span style="color:#b44">&#34;Before modify:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>);
+  s.dump();
+  x <span style="color:#666">=</span> <span style="color:#666">0</span>; <span style="color:#080;font-style:italic">// S.x1 is mutable data member, could be modified although [x, y] is
+</span><span style="color:#080;font-style:italic"></span>         <span style="color:#080;font-style:italic">// const value.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// y = -1.23; // Error: y is const-qualified
+</span><span style="color:#080;font-style:italic"></span>  printf(<span style="color:#b44">&#34;After modify:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>);
+  s.dump();
+}
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  foo_bind_data_member_ref();
+  foo_bind_data_member_cp();
+
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fallback" data-lang="fallback">foo_bind_data_member_ref
+Before modify:
+x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
+After modify:
+x1:0,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
+
+foo_bind_data_member_cp
+Before modify:
+x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
+After modify:
+x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
+</code></pre></div><p>##1.4 bind to map</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_map -std=c++17 -lstdc++ bind_map.cc
+</span><span style="color:#080;font-style:italic">// g++ -o bind_map -std=gnu++17 -lstdc++ bind_map.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;unordered_map&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">Key</span> {
+  <span style="color:#0b0;font-weight:bold">int</span> _key;
+
+  Key(<span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">int</span> k) <span style="color:#666">:</span> _key(k) {}
+
+  <span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">local_hash</span> {
+    std<span style="color:#666">::</span>size_t <span style="color:#a2f;font-weight:bold">operator</span>()(<span style="color:#a2f;font-weight:bold">const</span> Key <span style="color:#666">&amp;</span>k) <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">noexcept</span> {
+      <span style="color:#a2f;font-weight:bold">return</span> std<span style="color:#666">::</span>hash<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>{}(k._key);
+    }
+  };
+
+  <span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">local_eq</span> {
+    <span style="color:#0b0;font-weight:bold">bool</span> <span style="color:#00a000">operator</span>()(<span style="color:#a2f;font-weight:bold">const</span> Key <span style="color:#666">&amp;</span>l, <span style="color:#a2f;font-weight:bold">const</span> Key <span style="color:#666">&amp;</span>r) <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">noexcept</span> {
+      <span style="color:#a2f;font-weight:bold">return</span> l._key <span style="color:#666">==</span> r._key;
+    }
+  };
+};
+
+<span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">Value</span> {
+  std<span style="color:#666">::</span>string _val;
+
+  Value(<span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string <span style="color:#666">&amp;</span>v) <span style="color:#666">:</span> _val(v) {}
+};
+
+<span style="color:#a2f;font-weight:bold">typedef</span> std<span style="color:#666">::</span>unordered_map<span style="color:#666">&lt;</span>Key, Value, Key<span style="color:#666">::</span>local_hash, Key<span style="color:#666">::</span>local_eq<span style="color:#666">&gt;</span> map_t;
+
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_map_ref</span>() {
+  printf(<span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, __func__);
+
+  map_t _map{{Key(<span style="color:#666">0</span>), Value(<span style="color:#b44">&#34;0_val&#34;</span>)},
+             {Key(<span style="color:#666">1</span>), Value(<span style="color:#b44">&#34;1_val&#34;</span>)},
+             {Key(<span style="color:#666">2</span>), Value(<span style="color:#b44">&#34;2_val&#34;</span>)}};
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">NOTE: try_emplace 是C++17的新特性，返回一个tuple，其中第二个表示是否成功。
+</span><span style="color:#080;font-style:italic">*/</span>
+<span style="color:#080">#define insert_map(seq)                                                        \
+</span><span style="color:#080">  do {                                                                         \
+</span><span style="color:#080">    if (const auto &amp;[iter, success] = _map.try_emplace(seq, #seq &#34;_val&#34;);      \
+</span><span style="color:#080">        !success) {                                                            \
+</span><span style="color:#080">      printf(&#34;emplace fail\n&#34;);                                                \
+</span><span style="color:#080">    }                                                                          \
+</span><span style="color:#080">  } while (0)
+</span><span style="color:#080"></span>
+  insert_map(<span style="color:#666">10</span>);
+  insert_map(<span style="color:#666">11</span>);
+  insert_map(<span style="color:#666">12</span>);
+
+<span style="color:#080">#undef insert_map
+</span><span style="color:#080"></span>
+  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[key, val] <span style="color:#666">:</span> _map) {
+    printf(<span style="color:#b44">&#34;k:%d, v:%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, key._key, val._val.c_str());
+  }
+}
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  foo_bind_map_ref();
+
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">foo_bind_map_ref
+k:12, v:12_val
+k:11, v:11_val
+k:10, v:10_val
+k:0, v:0_val
+k:1, v:1_val
+k:2, v:2_val
+</code></pre></div><p>##1.5 captured by lambda</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_captured_by_lambda -std=c++17 bind_captured_by_lambda.cc
+</span><span style="color:#080;font-style:italic">// g++ -o bind_captured_by_lambda -std=gnu++17 bind_captured_by_lambda.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">S</span> {
+  <span style="color:#0b0;font-weight:bold">int</span> p{<span style="color:#666">6</span>}, q{<span style="color:#666">7</span>};
+};
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[b, d] <span style="color:#666">=</span> S{};
+  <span style="color:#a2f;font-weight:bold">auto</span> l <span style="color:#666">=</span> [b, d] { <span style="color:#a2f;font-weight:bold">return</span> b <span style="color:#666">*</span> d; }; <span style="color:#080;font-style:italic">// valid since C++20 for both clang and g++. clang not handle this before C++20.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// auto l = [b=b, d=d] { return b * d; }; // force passing `b,d` into lambda is ok.
+</span><span style="color:#080;font-style:italic"></span>  assert(l() <span style="color:#666">==</span> <span style="color:#666">42</span>);
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>#2 <a href="https://en.cppreference.com/w/cpp/utility/tuple/deduction_guides" target="_blank" rel="noopener">tuple implicit deduction</a></p>
+<p>C++17增加了tuple类型的推导，不需要手动指定模板参数</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o tuple_implicit_infer -std=c++17 tuple_implicit_infer.cc
+</span><span style="color:#080;font-style:italic">// g++ -o tuple_implicit_infer -std=gnu++17 tuple_implicit_infer.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">before_cpp17</span>() {
+  <span style="color:#0b0;font-weight:bold">int</span> a0 <span style="color:#666">=</span> <span style="color:#666">123</span>;
+  <span style="color:#0b0;font-weight:bold">float</span> a1 <span style="color:#666">=</span> <span style="color:#666">3.21</span>;
+  <span style="color:#0b0;font-weight:bold">char</span> a2 <span style="color:#666">=</span> <span style="color:#b44">&#39;y&#39;</span>;
+  std<span style="color:#666">::</span>string a3(<span style="color:#b44">&#34;tuple&#34;</span>);
+
+  std<span style="color:#666">::</span>tuple<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span>, <span style="color:#0b0;font-weight:bold">float</span>, <span style="color:#0b0;font-weight:bold">char</span>, std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> tpl(a0, a1, a2, a3);
+}
+
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">after_cpp17</span>() {
+  <span style="color:#0b0;font-weight:bold">int</span> a0 <span style="color:#666">=</span> <span style="color:#666">123</span>;
+  <span style="color:#0b0;font-weight:bold">float</span> a1 <span style="color:#666">=</span> <span style="color:#666">3.21</span>;
+  <span style="color:#0b0;font-weight:bold">char</span> a2 <span style="color:#666">=</span> <span style="color:#b44">&#39;y&#39;</span>;
+  std<span style="color:#666">::</span>string a3(<span style="color:#b44">&#34;tuple&#34;</span>);
+
+  std<span style="color:#666">::</span>tuple tpl(a0, a1, a2, a3);
+}
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>() {
+  before_cpp17();
+  after_cpp17();
+
+  <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>#3 <a href="https://en.cppreference.com/w/cpp/language/if" target="_blank" rel="noopener">if</a></p>
+<p>##3.1 <code>if constexpr</code></p>
+<blockquote>
+<p>The statement that begins with if constexpr is known as the constexpr if statement.</p>
+</blockquote>
+<p>编译时分支判断，可以部分替代类似<code>#if..#elif</code>甚至用模板实现的重载等。</p>
+<p>Case study:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o if_constexpr -std=c++17 if_constexpr.cc
+</span><span style="color:#080;font-style:italic">// g++ -o if_constexpr -std=gnu++17 if_constexpr.cc
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#080">#include</span> <span style="color:#080">&lt;type_traits&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#080;font-style:italic">// 通过 `std::is_pointer_v`在编译期间判断类型，选择不同分支
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">template</span><span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> T<span style="color:#666">&gt;</span>
+<span style="color:#a2f;font-weight:bold">auto</span> get_value(T t)
+{
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (std<span style="color:#666">::</span>is_pointer_v<span style="color:#666">&lt;</span>T<span style="color:#666">&gt;</span>)
+        <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">*</span>t; <span style="color:#080;font-style:italic">// deduces return type to int for T = int*
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">else</span>
+        <span style="color:#a2f;font-weight:bold">return</span> t;  <span style="color:#080;font-style:italic">// deduces return type to int for T = int
+</span><span style="color:#080;font-style:italic"></span>}
+
+<span style="color:#080;font-style:italic">// 类似`#if true`的功能
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">extern</span> <span style="color:#0b0;font-weight:bold">int</span> x; <span style="color:#080;font-style:italic">// no definition of x required
+</span><span style="color:#080;font-style:italic"></span>
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">f</span>()
+{
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">constexpr</span> (<span style="color:#a2f">true</span>)
+        <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+    <span style="color:#a2f;font-weight:bold">else</span> <span style="color:#a2f;font-weight:bold">if</span> (x)
+        <span style="color:#a2f;font-weight:bold">return</span> x;
+    <span style="color:#a2f;font-weight:bold">else</span>
+        <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">-</span>x;
+}
+
+<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">f2</span>()
+{
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">constexpr</span>(<span style="color:#a2f">false</span>)
+    {
+        <span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>;
+        <span style="color:#0b0;font-weight:bold">int</span> <span style="color:#666">*</span>p <span style="color:#666">=</span> i; <span style="color:#080;font-style:italic">// Error even though in discarded statement
+</span><span style="color:#080;font-style:italic"></span>    }
+}
+
+<span style="color:#080;font-style:italic">// 检查模板参数数量
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">template</span><span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> T, <span style="color:#a2f;font-weight:bold">typename</span> ... Rest<span style="color:#666">&gt;</span>
+<span style="color:#0b0;font-weight:bold">void</span> g(T<span style="color:#666">&amp;&amp;</span> p, Rest<span style="color:#666">&amp;&amp;</span> ...rs)
+{
+    <span style="color:#080;font-style:italic">// ... handle p
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (<span style="color:#a2f;font-weight:bold">sizeof</span>...(rs) <span style="color:#666">&gt;</span> <span style="color:#666">0</span>)
+        g(rs...); <span style="color:#080;font-style:italic">// never instantiated with an empty argument list.
+</span><span style="color:#080;font-style:italic"></span>}
+
+<span style="color:#080;font-style:italic">// 编译期逻辑推导
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">template</span><span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">class</span> <span style="color:#00f">T</span><span style="color:#666">&gt;</span>
+<span style="color:#0b0;font-weight:bold">void</span> g2()
+{
+    <span style="color:#a2f;font-weight:bold">auto</span> lm <span style="color:#666">=</span> [<span style="color:#666">=</span>](<span style="color:#a2f;font-weight:bold">auto</span> p)
+    {
+        <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (<span style="color:#a2f;font-weight:bold">sizeof</span>(T) <span style="color:#666">==</span> <span style="color:#666">1</span> <span style="color:#666">&amp;&amp;</span> <span style="color:#a2f;font-weight:bold">sizeof</span> p <span style="color:#666">==</span> <span style="color:#666">1</span>)
+        {
+            <span style="color:#080;font-style:italic">// this condition remains value-dependent after instantiation of g&lt;T&gt;,
+</span><span style="color:#080;font-style:italic"></span>            <span style="color:#080;font-style:italic">// which affects implicit lambda captures
+</span><span style="color:#080;font-style:italic"></span>            <span style="color:#080;font-style:italic">// this compound statement may be discarded only after
+</span><span style="color:#080;font-style:italic"></span>            <span style="color:#080;font-style:italic">// instantiation of the lambda body
+</span><span style="color:#080;font-style:italic"></span>        }
+    };
+}
+
+<span style="color:#080;font-style:italic">// 检查是否是数值类型
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">template</span><span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> T<span style="color:#666">&gt;</span>
+<span style="color:#0b0;font-weight:bold">void</span> f3()
+{
+    <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#00a000">constexpr</span> (std<span style="color:#666">::</span>is_arithmetic_v<span style="color:#666">&lt;</span>T<span style="color:#666">&gt;</span>) {}
+        <span style="color:#080;font-style:italic">// ...
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">else</span> {
+        <span style="color:#a2f;font-weight:bold">using</span> invalid_array <span style="color:#666">=</span> <span style="color:#0b0;font-weight:bold">int</span>[<span style="color:#666">-</span><span style="color:#666">1</span>]; <span style="color:#080;font-style:italic">// ill-formed: invalid for every T
+</span><span style="color:#080;font-style:italic"></span>        <span style="color:#a2f;font-weight:bold">static_assert</span>(<span style="color:#a2f">false</span>, <span style="color:#b44">&#34;Must be arithmetic&#34;</span>); <span style="color:#080;font-style:italic">// ill-formed before CWG2518
+</span><span style="color:#080;font-style:italic"></span>    }
+}
+</code></pre></div><p>##3.2 <code>if init-statement</code></p>
+<p>支持在<code>if</code>条件判断语句中进行临时变量初始化</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">std<span style="color:#666">::</span>map<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span>, std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> m;
+std<span style="color:#666">::</span>mutex mx;
+<span style="color:#a2f;font-weight:bold">extern</span> <span style="color:#0b0;font-weight:bold">bool</span> shared_flag; <span style="color:#080;font-style:italic">// guarded by mx
+</span><span style="color:#080;font-style:italic"></span> 
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">demo</span>()
+{
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#a2f;font-weight:bold">auto</span> it <span style="color:#666">=</span> m.find(<span style="color:#666">10</span>); it <span style="color:#666">!=</span> m.end())
+        <span style="color:#a2f;font-weight:bold">return</span> it<span style="color:#666">-&gt;</span>second.size();
+ 
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#0b0;font-weight:bold">char</span> buf[<span style="color:#666">10</span>]; std<span style="color:#666">::</span>fgets(buf, <span style="color:#666">10</span>, stdin))
+        m[<span style="color:#666">0</span>] <span style="color:#666">+=</span> buf;
+ 
+    <span style="color:#a2f;font-weight:bold">if</span> (std<span style="color:#666">::</span>lock_guard lock(mx); shared_flag)
+    {
+        unsafe_ping();
+        shared_flag <span style="color:#666">=</span> <span style="color:#a2f">false</span>;
+    }
+ 
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#0b0;font-weight:bold">int</span> s; <span style="color:#0b0;font-weight:bold">int</span> count <span style="color:#666">=</span> ReadBytesWithSignal(<span style="color:#666">&amp;</span>s))
+    {
+        publish(count);
+        raise(s);
+    }
+ 
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> keywords <span style="color:#666">=</span> {<span style="color:#b44">&#34;if&#34;</span>, <span style="color:#b44">&#34;for&#34;</span>, <span style="color:#b44">&#34;while&#34;</span>};
+        std<span style="color:#666">::</span>ranges<span style="color:#666">::</span>any_of(keywords, [<span style="color:#666">&amp;</span>tok](<span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">char</span><span style="color:#666">*</span> kw) { <span style="color:#a2f;font-weight:bold">return</span> tok <span style="color:#666">==</span> kw; }))
+    {
+        std<span style="color:#666">::</span>cerr <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;Token must not be a keyword</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    }
+}
+</code></pre></div><p>#4 <a href="https://en.cppreference.com/w/cpp/thread/shared_mutex" target="_blank" rel="noopener">shared_mutex</a></p>
+<p>C++11的<code>std::mutex</code>是独占的（即不区分读写锁），通过<code>lock</code>或<code>try_lock</code>去占取mutex。C++17的<code>shared_mutex</code>提供更细的控制，可以被<code>lock</code>或<code>lock_shared</code>加锁，前者独占（write）后者共享（read）。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">std<span style="color:#666">::</span>shared_mutex mutex_;
+std<span style="color:#666">::</span>unique_lock lock(mutex_);<span style="color:#080;font-style:italic">// write mode
+</span><span style="color:#080;font-style:italic"></span>std<span style="color:#666">::</span>shared_lock lock(mutex_);<span style="color:#080;font-style:italic">// read mode
+</span></code></pre></div><p>#5 <a href="https://en.cppreference.com/w/cpp/string/basic_string_view" target="_blank" rel="noopener">string_view</a></p>
+<blockquote>
+<p>The class template basic_string_view describes an object that can <strong>refer to</strong> a constant contiguous sequence of CharT with the first element of the sequence at position zero. A typical implementation holds only two members: a <strong>pointer</strong> to constant CharT and a <strong>size</strong>.</p>
+</blockquote>
+<p><code>std::string_view</code>对字符串不具有所有权，成员对象有字符串指针地址和字符串size。其成员函数<code>substr</code>等是在做指针偏移，不涉及字符串拷贝，所以效率更高。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o string_view -std=c++17 string_view.cc
+</span><span style="color:#080;font-style:italic">// g++ -o string_view -std=gnu++17 string_view.cc
+</span><span style="color:#080;font-style:italic"></span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string_view&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span>
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
+{
+    <span style="color:#a2f;font-weight:bold">constexpr</span> std<span style="color:#666">::</span>string_view unicode[] { <span style="color:#b44">&#34;▀▄─&#34;</span>, <span style="color:#b44">&#34;▄▀─&#34;</span>, <span style="color:#b44">&#34;▀─▄&#34;</span>, <span style="color:#b44">&#34;▄─▀&#34;</span> };
+
+    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> y{}, p{}; y <span style="color:#666">!=</span> <span style="color:#666">6</span>; <span style="color:#666">++</span>y, p <span style="color:#666">=</span> ((p <span style="color:#666">+</span> <span style="color:#666">1</span>) <span style="color:#666">%</span> <span style="color:#666">4</span>))
+    {
+        <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> x{}; x <span style="color:#666">!=</span> <span style="color:#666">16</span>; <span style="color:#666">++</span>x)
+            std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> unicode[p];
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    }
+
+    <span style="color:#080;font-style:italic">// substr
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string org_str(<span style="color:#b44">&#34;123456abcdef&#34;</span>);
+    <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string_view view_str(org_str);
+    <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string_view sub_str <span style="color:#666">=</span> view_str.substr(<span style="color:#080;font-style:italic">/*pos*/</span><span style="color:#666">4</span>, <span style="color:#080;font-style:italic">/*len*/</span><span style="color:#666">4</span>);
+    printf(<span style="color:#b44">&#34;org str addr:%p, str size:%ld</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span><span style="color:#666">*</span>)org_str.data(), org_str.size());
+    printf(<span style="color:#b44">&#34;view str addr:%p, str size:%ld</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span><span style="color:#666">*</span>)view_str.data(), view_str.size());
+    printf(<span style="color:#b44">&#34;sub str addr:%p, str size:%ld</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, (<span style="color:#0b0;font-weight:bold">void</span><span style="color:#666">*</span>)sub_str.data(), sub_str.size());
+
+    <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">...
+org str addr:0x7fffffffe280, str size:12
+view str addr:0x7fffffffe280, str size:12
+sub str addr:0x7fffffffe284, str size:4
+</code></pre></div><p>#6 <a href="https://en.cppreference.com/w/cpp/utility/any" target="_blank" rel="noopener">std::any</a></p>
+<p>类似 <code>void *</code>的含义，但<code>any</code>会记录类型，在<code>std::any_cast</code>时做类型检查，在对象释放时根据类型进行析构。</p>
+<p>case study:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;any&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span> 
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
+{
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>boolalpha;
+ 
+    <span style="color:#080;font-style:italic">// any type
+</span><span style="color:#080;font-style:italic"></span>    std<span style="color:#666">::</span>any a <span style="color:#666">=</span> <span style="color:#666">1</span>;
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> a.type().name() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;: &#34;</span> <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>(a) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    a <span style="color:#666">=</span> <span style="color:#666">3.14</span>;
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> a.type().name() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;: &#34;</span> <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">double</span><span style="color:#666">&gt;</span>(a) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    a <span style="color:#666">=</span> <span style="color:#a2f">true</span>;
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> a.type().name() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;: &#34;</span> <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">bool</span><span style="color:#666">&gt;</span>(a) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+ 
+    <span style="color:#080;font-style:italic">// bad cast
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">try</span>
+    {
+        a <span style="color:#666">=</span> <span style="color:#666">1</span>;
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">float</span><span style="color:#666">&gt;</span>(a) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    }
+    <span style="color:#a2f;font-weight:bold">catch</span> (<span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>bad_any_cast<span style="color:#666">&amp;</span> e)
+    {
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;cast int to float: &#34;</span> <span style="color:#666">&lt;&lt;</span> e.what() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    }
+ 
+    <span style="color:#080;font-style:italic">// has value
+</span><span style="color:#080;font-style:italic"></span>    a <span style="color:#666">=</span> <span style="color:#666">2</span>;
+    <span style="color:#a2f;font-weight:bold">if</span> (a.has_value())
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> a.type().name() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;: has value &#34;</span> <span style="color:#666">&lt;&lt;</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>(a) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+ 
+    <span style="color:#080;font-style:italic">// reset
+</span><span style="color:#080;font-style:italic"></span>    a.reset();
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>a.has_value())
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;no value</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+ 
+    <span style="color:#080;font-style:italic">// pointer to contained data
+</span><span style="color:#080;font-style:italic"></span>    a <span style="color:#666">=</span> <span style="color:#666">3</span>;
+    <span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">*</span> i <span style="color:#666">=</span> std<span style="color:#666">::</span>any_cast<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>(<span style="color:#666">&amp;</span>a);
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#666">*</span>i <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">i: <span style="color:#666">1</span>
+d: 3.14
+b: <span style="color:#a2f">true</span>
+cast int to float: bad any_cast
+i: has value <span style="color:#666">2</span>
+no value
+<span style="color:#666">3</span>
+</code></pre></div><p>#7 <a href="https://en.cppreference.com/w/cpp/utility/optional" target="_blank" rel="noopener">std::optional</a></p>
+<blockquote>
+<p>The class template std::optional manages an optional contained value, i.e. a value that <strong>may or may</strong> not be present.</p>
+</blockquote>
+<p>llvm已经把llvm::optional替换成标准库的实现了. 常用于函数返回值类型。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;optional&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span> 
+<span style="color:#080;font-style:italic">// optional can be used as the return type of a factory that may fail
+</span><span style="color:#080;font-style:italic"></span>std<span style="color:#666">::</span>optional<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> create(<span style="color:#0b0;font-weight:bold">bool</span> b)
+{
+    <span style="color:#a2f;font-weight:bold">if</span> (b)
+        <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#b44">&#34;Godzilla&#34;</span>;
+    <span style="color:#a2f;font-weight:bold">return</span> {};
+}
+ 
+<span style="color:#080;font-style:italic">// std::nullopt can be used to create any (empty) std::optional
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#00a000">create2</span>(<span style="color:#0b0;font-weight:bold">bool</span> b)
+{
+    <span style="color:#a2f;font-weight:bold">return</span> b <span style="color:#666">?</span> std<span style="color:#666">::</span>optional<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span>{<span style="color:#b44">&#34;Godzilla&#34;</span>} <span style="color:#666">:</span> std<span style="color:#666">::</span>nullopt;
+}
+ 
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
+{
+    <span style="color:#a2f;font-weight:bold">auto</span> va <span style="color:#666">=</span> create(<span style="color:#a2f">false</span>);
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>va) {
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;check optional value through bool operator</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    }
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>va.has_value()) {
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;check optional value through has_value member func</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    }
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;create(false) returned &#34;</span>
+              <span style="color:#666">&lt;&lt;</span> create(<span style="color:#a2f">false</span>).value_or(<span style="color:#b44">&#34;empty&#34;</span>) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+ 
+    <span style="color:#080;font-style:italic">// optional-returning factory functions are usable as conditions of while and if
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#a2f;font-weight:bold">auto</span> str <span style="color:#666">=</span> create2(<span style="color:#a2f">true</span>))
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;create2(true) returned &#34;</span> <span style="color:#666">&lt;&lt;</span> <span style="color:#666">*</span>str <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">check optional value through bool operator
+check optional value through has_value member func
+create<span style="color:#666">(</span><span style="color:#a2f">false</span><span style="color:#666">)</span> returned empty
+create2<span style="color:#666">(</span><span style="color:#a2f">true</span><span style="color:#666">)</span> returned Godzilla
+</code></pre></div><p>#8 <a href="https://en.cppreference.com/w/cpp/utility/variant" target="_blank" rel="noopener">std::variant</a></p>
+<blockquote>
+<p>The class template std::variant represents a <strong>type-safe union</strong>.</p>
+</blockquote>
+<p>union结构体中的各个类型可选的，<code>std::variant</code>效果相同，多了一些helper function如<code>holds_alternative</code>,<code>get</code>。
+但是union是所有成员共用内存，variant似乎是每个成员都独有内存。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;variant&gt;</span><span style="color:#080">
+</span><span style="color:#080"></span> 
+<span style="color:#a2f;font-weight:bold">union</span> <span style="color:#00f">UnionTy</span> {
+    <span style="color:#0b0;font-weight:bold">int</span> v0;
+    <span style="color:#0b0;font-weight:bold">float</span> v1;
+    <span style="color:#0b0;font-weight:bold">double</span> v2;
+};
+
+<span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
+{
+    UnionTy u;
+    u.v0 <span style="color:#666">=</span> <span style="color:#666">123</span>;
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;size of UnionTy: &#34;</span> <span style="color:#666">&lt;&lt;</span> <span style="color:#a2f;font-weight:bold">sizeof</span>(u) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    std<span style="color:#666">::</span>variant<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span>, <span style="color:#0b0;font-weight:bold">float</span>, <span style="color:#0b0;font-weight:bold">double</span><span style="color:#666">&gt;</span> v, w;
+    std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;size of variant&lt;int, float, double&gt;: &#34;</span> <span style="color:#666">&lt;&lt;</span> <span style="color:#a2f;font-weight:bold">sizeof</span>(v) <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    v <span style="color:#666">=</span> <span style="color:#666">42</span>; <span style="color:#080;font-style:italic">// v contains int
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> std<span style="color:#666">::</span>get<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>(v);
+    assert(<span style="color:#666">42</span> <span style="color:#666">==</span> i); <span style="color:#080;font-style:italic">// succeeds
+</span><span style="color:#080;font-style:italic"></span>    w <span style="color:#666">=</span> std<span style="color:#666">::</span>get<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span><span style="color:#666">&gt;</span>(v);
+    w <span style="color:#666">=</span> std<span style="color:#666">::</span>get<span style="color:#666">&lt;</span><span style="color:#666">0</span><span style="color:#666">&gt;</span>(v); <span style="color:#080;font-style:italic">// same effect as the previous line
+</span><span style="color:#080;font-style:italic"></span>    w <span style="color:#666">=</span> v; <span style="color:#080;font-style:italic">// same effect as the previous line
+</span><span style="color:#080;font-style:italic"></span> 
+<span style="color:#080;font-style:italic">//  std::get&lt;double&gt;(v); // error: no double in [int, float]
+</span><span style="color:#080;font-style:italic">//  std::get&lt;3&gt;(v);      // error: valid index values are 0 and 1
+</span><span style="color:#080;font-style:italic"></span> 
+    <span style="color:#a2f;font-weight:bold">try</span>
+    {
+        std<span style="color:#666">::</span>get<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">float</span><span style="color:#666">&gt;</span>(w); <span style="color:#080;font-style:italic">// w contains int, not float: will throw
+</span><span style="color:#080;font-style:italic"></span>    }
+    <span style="color:#a2f;font-weight:bold">catch</span> (<span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>bad_variant_access<span style="color:#666">&amp;</span> ex)
+    {
+        std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> ex.what() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
+    }
+ 
+    <span style="color:#a2f;font-weight:bold">using</span> <span style="color:#a2f;font-weight:bold">namespace</span> std<span style="color:#666">::</span>literals;
+ 
+    std<span style="color:#666">::</span>variant<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> x(<span style="color:#b44">&#34;abc&#34;</span>);
+    <span style="color:#080;font-style:italic">// converting constructors work when unambiguous
+</span><span style="color:#080;font-style:italic"></span>    x <span style="color:#666">=</span> <span style="color:#b44">&#34;def&#34;</span>; <span style="color:#080;font-style:italic">// converting assignment also works when unambiguous
+</span><span style="color:#080;font-style:italic"></span> 
+    std<span style="color:#666">::</span>variant<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string, <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#a2f;font-weight:bold">const</span><span style="color:#666">*&gt;</span> y(<span style="color:#b44">&#34;abc&#34;</span>);
+    <span style="color:#080;font-style:italic">// casts to void const * when passed a char const *
+</span><span style="color:#080;font-style:italic"></span>    assert(std<span style="color:#666">::</span>holds_alternative<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#a2f;font-weight:bold">const</span><span style="color:#666">*&gt;</span>(y)); <span style="color:#080;font-style:italic">// succeeds
+</span><span style="color:#080;font-style:italic"></span>    y <span style="color:#666">=</span> <span style="color:#b44">&#34;xyz&#34;</span>s;<span style="color:#080;font-style:italic">// set y contains std::string
+</span><span style="color:#080;font-style:italic"></span>    assert(std<span style="color:#666">::</span>holds_alternative<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span>(y)); <span style="color:#080;font-style:italic">// succeeds
+</span><span style="color:#080;font-style:italic"></span>
+}
+</code></pre></div><p>output:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">size of UnionTy: <span style="color:#666">8</span>
+size of variant&lt;int, float, double&gt;: <span style="color:#666">16</span>
+std::get: wrong index <span style="color:#a2f;font-weight:bold">for</span> variant
+</code></pre></div>
+    </div>
+
+    
+        <div class="tags">
+            
+                <a href="https://yellowhch.github.io/tags/c&#43;&#43;">C&#43;&#43;</a>
+            
+        </div>
+    
+    
+    
+
+</section>
+
+
+    </main>
+    
+    <footer id="footer">
+    
+        <div id="social">
+
+
+    <a class="symbol" href="https://github.com/YellowHCH/" rel="me" target="_blank">
+        
+        <svg fill="#bbbbbb" width="28" height="28"  viewBox="0 0 72 72" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    
+    <title>Github</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Social-Icons---Rounded-Black" transform="translate(-264.000000, -939.000000)">
+            <g id="Github" transform="translate(264.000000, 939.000000)">
+                <path d="M8,72 L64,72 C68.418278,72 72,68.418278 72,64 L72,8 C72,3.581722 68.418278,-8.11624501e-16 64,0 L8,0 C3.581722,8.11624501e-16 -5.41083001e-16,3.581722 0,8 L0,64 C5.41083001e-16,68.418278 3.581722,72 8,72 Z" id="Rounded" fill="#bbbbbb"></path>
+                <path d="M35.9985,13 C22.746,13 12,23.7870921 12,37.096644 C12,47.7406712 18.876,56.7718301 28.4145,59.9584121 C29.6145,60.1797862 30.0525,59.4358488 30.0525,58.7973276 C30.0525,58.2250681 30.0315,56.7100863 30.0195,54.6996482 C23.343,56.1558981 21.9345,51.4693938 21.9345,51.4693938 C20.844,48.6864054 19.2705,47.9454799 19.2705,47.9454799 C17.091,46.4500754 19.4355,46.4801943 19.4355,46.4801943 C21.843,46.6503662 23.1105,48.9634994 23.1105,48.9634994 C25.2525,52.6455377 28.728,51.5823398 30.096,50.9649018 C30.3135,49.4077535 30.9345,48.3460615 31.62,47.7436831 C26.2905,47.1352808 20.688,45.0691228 20.688,35.8361671 C20.688,33.2052792 21.6225,31.0547881 23.1585,29.3696344 C22.911,28.7597262 22.0875,26.3110578 23.3925,22.9934585 C23.3925,22.9934585 25.4085,22.3459017 29.9925,25.4632101 C31.908,24.9285993 33.96,24.6620468 36.0015,24.6515052 C38.04,24.6620468 40.0935,24.9285993 42.0105,25.4632101 C46.5915,22.3459017 48.603,22.9934585 48.603,22.9934585 C49.9125,26.3110578 49.089,28.7597262 48.8415,29.3696344 C50.3805,31.0547881 51.309,33.2052792 51.309,35.8361671 C51.309,45.0917119 45.6975,47.1292571 40.3515,47.7256117 C41.2125,48.4695491 41.9805,49.9393525 41.9805,52.1877301 C41.9805,55.4089489 41.9505,58.0067059 41.9505,58.7973276 C41.9505,59.4418726 42.3825,60.1918338 43.6005,59.9554002 C53.13,56.7627944 60,47.7376593 60,37.096644 C60,23.7870921 49.254,13 35.9985,13" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>
+    </a>
+
+
+</div>
+
+    
+
+    <div class="copyright">
+    
+       © Copyright 
+       2024 
+       <span class="split">
+        <svg fill="#bbbbbb" width="15" height="15" version="1.1" id="heart-15" xmlns="http://www.w3.org/2000/svg" width="15px" height="15px" viewBox="0 0 15 15">
+  <path d="M13.91,6.75c-1.17,2.25-4.3,5.31-6.07,6.94c-0.1903,0.1718-0.4797,0.1718-0.67,0C5.39,12.06,2.26,9,1.09,6.75&#xA;&#x9;C-1.48,1.8,5-1.5,7.5,3.45C10-1.5,16.48,1.8,13.91,6.75z"/>
+</svg>
+       </span>
+       ChenhuiHuang
+    
+    </div>
+
+    
+</footer>
+
+
+
+  </body>
+</html>
