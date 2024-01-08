@@ -6,10 +6,19 @@
     <description>Recent content on ch_huang</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 24 Dec 2023 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 04 Jan 2024 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="https://yellowhch.github.io/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>C&#43;&#43;17 new feature</title>
+      <link>https://yellowhch.github.io/post/c&#43;&#43;17/</link>
+      <pubDate>Thu, 04 Jan 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/c&#43;&#43;17/</guid>
+      <description>#1. structured binding Binds the specified names to subobjects or elements of the initializer. Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type. 类似引用，可以绑定到已经存在的结构化对象的成员，但不一定</description>
+    </item>
     
     <item>
       <title>How does xla integrate with triton</title>
@@ -36,15 +45,6 @@
       
       <guid>https://yellowhch.github.io/post/analysis-triton-tutorial-matmul-opt-l2cache/</guid>
       <description>Ref to triton tutorial triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高</description>
-    </item>
-    
-    <item>
-      <title>C&#43;&#43;17 new feature</title>
-      <link>https://yellowhch.github.io/post/c&#43;&#43;17/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>https://yellowhch.github.io/post/c&#43;&#43;17/</guid>
-      <description>#1. structured binding Binds the specified names to subobjects or elements of the initializer. Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type. 类似引用，可以绑定到已经存在的结构化对象的成员，但不一定</description>
     </item>
     
   </channel>
