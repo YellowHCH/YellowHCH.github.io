@@ -105,13 +105,15 @@
 Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type.</p>
 </blockquote>
 <p><em>类似引用，可以绑定到已经存在的<strong>结构化</strong>对象的成员，但不一定是引用类型（即可以是copy）</em></p>
-<p>语法:
-<code>auto (thread local | static) ref-qualifier [identifier-list] = exp;</code>
-<code>auto (thread local | static) ref-qualifier [identifier-list]{exp};</code>
-<code>auto (thread local | static) ref-qualifier [identifier-list](exp);</code>
-其中，
-<code>ref-qualifier</code>: 可以选择是否是引用类型（&amp;,&amp;&amp;）或拷贝
-<code>identifier-list</code>: 列出被绑定的成员的别名</p>
+<p>语法:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#a2f;font-weight:bold">auto</span> (<span style="color:#a2f;font-weight:bold">thread</span> local <span style="color:#666">|</span> <span style="color:#a2f;font-weight:bold">static</span>) ref<span style="color:#666">-</span>qualifier [identifier<span style="color:#666">-</span>list] <span style="color:#666">=</span> exp;
+<span style="color:#a2f;font-weight:bold">auto</span> (<span style="color:#a2f;font-weight:bold">thread</span> local <span style="color:#666">|</span> <span style="color:#a2f;font-weight:bold">static</span>) ref<span style="color:#666">-</span>qualifier [identifier<span style="color:#666">-</span>list]{exp};
+<span style="color:#a2f;font-weight:bold">auto</span> (<span style="color:#a2f;font-weight:bold">thread</span> local <span style="color:#666">|</span> <span style="color:#a2f;font-weight:bold">static</span>) ref<span style="color:#666">-</span>qualifier [identifier<span style="color:#666">-</span>list](exp);
+</code></pre></div><p>其中，</p>
+<ul>
+<li><code>ref-qualifier</code>: 可以选择是否是引用类型（&amp;,&amp;&amp;）或拷贝</li>
+<li><code>identifier-list</code>: 列出被绑定的成员的别名</li>
+</ul>
 <p><strong>Case study</strong>:</p>
 <h2 id="11-bind-to-array">1.1 bind to array</h2>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_array -std=c++17 bind_array.cc
