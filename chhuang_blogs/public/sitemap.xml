@@ -4,8 +4,28 @@
   
   <url>
     <loc>https://yellowhch.github.io/</loc>
-    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
+    <lastmod>2024-01-04T00:00:00+00:00</lastmod>
     <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/c&#43;&#43;/</loc>
+    <lastmod>2024-01-04T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/post/c&#43;&#43;17/</loc>
+    <lastmod>2024-01-04T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/post/</loc>
+    <lastmod>2024-01-04T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yellowhch.github.io/tags/</loc>
+    <lastmod>2024-01-04T00:00:00+00:00</lastmod>
   </url>
   
   <url>
@@ -15,16 +35,6 @@
   
   <url>
     <loc>https://yellowhch.github.io/post/how-does-xla-integrate-triton/</loc>
-    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/post/</loc>
-    <lastmod>2023-12-24T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/tags/</loc>
     <lastmod>2023-12-24T00:00:00+00:00</lastmod>
   </url>
   
@@ -71,14 +81,6 @@
   <url>
     <loc>https://yellowhch.github.io/tags/matmul/</loc>
     <lastmod>2023-12-15T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/tags/c&#43;&#43;/</loc>
-  </url>
-  
-  <url>
-    <loc>https://yellowhch.github.io/post/c&#43;&#43;17/</loc>
   </url>
   
   <url>

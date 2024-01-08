@@ -77,16 +77,27 @@
           <div>
               <nav id="TableOfContents">
   <ul>
-    <li><a href="#11-bind-to-array">1.1 bind to array</a></li>
-    <li><a href="#12-bind-to-tuple">1.2 bind to tuple</a></li>
-    <li><a href="#13-bind-struct-data-member">1.3 bind struct data member</a></li>
-    <li><a href="#14-bind-to-map">1.4 bind to map</a></li>
-    <li><a href="#15-captured-by-lambda">1.5 captured by lambda</a></li>
-  </ul>
-
-  <ul>
-    <li><a href="#31-if-constexpr">3.1 <code>if constexpr</code></a></li>
-    <li><a href="#32-if-init-statement">3.2 <code>if init-statement</code></a></li>
+    <li><a href="#1-structured-bindinghttpsencppreferencecomwcpplanguagestructured_binding">1. <a href="https://en.cppreference.com/w/cpp/language/structured_binding">structured binding</a></a>
+      <ul>
+        <li><a href="#11-bind-to-array">1.1 bind to array</a></li>
+        <li><a href="#12-bind-to-tuple">1.2 bind to tuple</a></li>
+        <li><a href="#13-bind-struct-data-member">1.3 bind struct data member</a></li>
+        <li><a href="#14-bind-to-map">1.4 bind to map</a></li>
+        <li><a href="#15-captured-by-lambda">1.5 captured by lambda</a></li>
+      </ul>
+    </li>
+    <li><a href="#2-tuple-implicit-deductionhttpsencppreferencecomwcpputilitytuplededuction_guides">2. <a href="https://en.cppreference.com/w/cpp/utility/tuple/deduction_guides">tuple implicit deduction</a></a></li>
+    <li><a href="#3-ifhttpsencppreferencecomwcpplanguageif">3. <a href="https://en.cppreference.com/w/cpp/language/if">if</a></a>
+      <ul>
+        <li><a href="#31-if-constexpr">3.1 <code>if constexpr</code></a></li>
+        <li><a href="#32-if-init-statement">3.2 <code>if init-statement</code></a></li>
+      </ul>
+    </li>
+    <li><a href="#4-shared_mutexhttpsencppreferencecomwcppthreadshared_mutex">4. <a href="https://en.cppreference.com/w/cpp/thread/shared_mutex">shared_mutex</a></a></li>
+    <li><a href="#5-string_viewhttpsencppreferencecomwcppstringbasic_string_view">5. <a href="https://en.cppreference.com/w/cpp/string/basic_string_view">string_view</a></a></li>
+    <li><a href="#6-stdanyhttpsencppreferencecomwcpputilityany">6. <a href="https://en.cppreference.com/w/cpp/utility/any">std::any</a></a></li>
+    <li><a href="#7-stdoptionalhttpsencppreferencecomwcpputilityoptional">7. <a href="https://en.cppreference.com/w/cpp/utility/optional">std::optional</a></a></li>
+    <li><a href="#8-stdvarianthttpsencppreferencecomwcpputilityvariant">8. <a href="https://en.cppreference.com/w/cpp/utility/variant">std::variant</a></a></li>
   </ul>
 </nav>
           </div>
@@ -99,7 +110,7 @@
 
 
     <div class="content">
-      <h1 id="1-structured-bindinghttpsencppreferencecomwcpplanguagestructured_binding">1. <a href="https://en.cppreference.com/w/cpp/language/structured_binding" target="_blank" rel="noopener">structured binding</a></h1>
+      <h2 id="1-structured-bindinghttpsencppreferencecomwcpplanguagestructured_binding">1. <a href="https://en.cppreference.com/w/cpp/language/structured_binding" target="_blank" rel="noopener">structured binding</a></h2>
 <blockquote>
 <p>Binds the specified names to subobjects or elements of the initializer.
 Like a reference, a structured binding is an alias to an existing object. Unlike a reference, a structured binding does not have to be of a reference type.</p>
@@ -115,7 +126,7 @@ Like a reference, a structured binding is an alias to an existing object. Unlike
 <li><code>identifier-list</code>: 列出被绑定的成员的别名</li>
 </ul>
 <p><strong>Case study</strong>:</p>
-<h2 id="11-bind-to-array">1.1 bind to array</h2>
+<h3 id="11-bind-to-array">1.1 bind to array</h3>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_array -std=c++17 bind_array.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_array -std=gnu++17 bind_array.cc
 </span><span style="color:#080;font-style:italic"></span>
@@ -146,7 +157,7 @@ after cp, addr:0x7fffffffe2d0,0x7fffffffe2d4
 after ref, addr:0x7fffffffe2c8,0x7fffffffe2cc
 x,y<span style="color:#666">={</span>1,2<span style="color:#666">}</span>
 xr,yr<span style="color:#666">={</span>1,2<span style="color:#666">}</span>
-</code></pre></div><h2 id="12-bind-to-tuple">1.2 bind to tuple</h2>
+</code></pre></div><h3 id="12-bind-to-tuple">1.2 bind to tuple</h3>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_tuple -std=c++17 bind_tuple.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_tuple -std=gnu++17 bind_tuple.cc
 </span><span style="color:#080;font-style:italic"></span>
@@ -193,7 +204,7 @@ z:type<span style="color:#666">(</span>int<span style="color:#666">)</span>, val
 a:type<span style="color:#666">(</span>float<span style="color:#666">)</span>, val<span style="color:#666">(</span>1.230000<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe298<span style="color:#666">)</span>
 b:type<span style="color:#666">(</span>char<span style="color:#666">)</span>, val<span style="color:#666">(</span>x<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe297<span style="color:#666">)</span>
 c:type<span style="color:#666">(</span>int<span style="color:#666">)</span>, val<span style="color:#666">(</span>996<span style="color:#666">)</span>, addr<span style="color:#666">(</span>0x7fffffffe2c0<span style="color:#666">)</span>
-</code></pre></div><h2 id="13-bind-struct-data-member">1.3 bind struct data member</h2>
+</code></pre></div><h3 id="13-bind-struct-data-member">1.3 bind struct data member</h3>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_data_member -std=c++17 bind_data_member.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_data_member -std=gnu++17 bind_data_member.cc
 </span><span style="color:#080;font-style:italic"></span>
@@ -256,7 +267,7 @@ Before modify:
 x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
 After modify:
 x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
-</code></pre></div><h2 id="14-bind-to-map">1.4 bind to map</h2>
+</code></pre></div><h3 id="14-bind-to-map">1.4 bind to map</h3>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_map -std=c++17 -lstdc++ bind_map.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_map -std=gnu++17 -lstdc++ bind_map.cc
 </span><span style="color:#080;font-style:italic"></span>
@@ -331,7 +342,7 @@ k:10, v:10_val
 k:0, v:0_val
 k:1, v:1_val
 k:2, v:2_val
-</code></pre></div><h2 id="15-captured-by-lambda">1.5 captured by lambda</h2>
+</code></pre></div><h3 id="15-captured-by-lambda">1.5 captured by lambda</h3>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_captured_by_lambda -std=c++17 bind_captured_by_lambda.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_captured_by_lambda -std=gnu++17 bind_captured_by_lambda.cc
 </span><span style="color:#080;font-style:italic"></span>
@@ -349,7 +360,7 @@ k:2, v:2_val
 </span><span style="color:#080;font-style:italic"></span>  assert(l() <span style="color:#666">==</span> <span style="color:#666">42</span>);
   <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
 }
-</code></pre></div><h1 id="2-tuple-implicit-deductionhttpsencppreferencecomwcpputilitytuplededuction_guides">2 <a href="https://en.cppreference.com/w/cpp/utility/tuple/deduction_guides" target="_blank" rel="noopener">tuple implicit deduction</a></h1>
+</code></pre></div><h2 id="2-tuple-implicit-deductionhttpsencppreferencecomwcpputilitytuplededuction_guides">2. <a href="https://en.cppreference.com/w/cpp/utility/tuple/deduction_guides" target="_blank" rel="noopener">tuple implicit deduction</a></h2>
 <p>C++17增加了tuple类型的推导，不需要手动指定模板参数</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o tuple_implicit_infer -std=c++17 tuple_implicit_infer.cc
 </span><span style="color:#080;font-style:italic">// g++ -o tuple_implicit_infer -std=gnu++17 tuple_implicit_infer.cc
@@ -382,8 +393,8 @@ k:2, v:2_val
 
   <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#666">0</span>;
 }
-</code></pre></div><h1 id="3-ifhttpsencppreferencecomwcpplanguageif">3 <a href="https://en.cppreference.com/w/cpp/language/if" target="_blank" rel="noopener">if</a></h1>
-<h2 id="31-if-constexpr">3.1 <code>if constexpr</code></h2>
+</code></pre></div><h2 id="3-ifhttpsencppreferencecomwcpplanguageif">3. <a href="https://en.cppreference.com/w/cpp/language/if" target="_blank" rel="noopener">if</a></h2>
+<h3 id="31-if-constexpr">3.1 <code>if constexpr</code></h3>
 <blockquote>
 <p>The statement that begins with if constexpr is known as the constexpr if statement.</p>
 </blockquote>
@@ -462,7 +473,7 @@ k:2, v:2_val
 </span><span style="color:#080;font-style:italic"></span>        <span style="color:#a2f;font-weight:bold">static_assert</span>(<span style="color:#a2f">false</span>, <span style="color:#b44">&#34;Must be arithmetic&#34;</span>); <span style="color:#080;font-style:italic">// ill-formed before CWG2518
 </span><span style="color:#080;font-style:italic"></span>    }
 }
-</code></pre></div><h2 id="32-if-init-statement">3.2 <code>if init-statement</code></h2>
+</code></pre></div><h3 id="32-if-init-statement">3.2 <code>if init-statement</code></h3>
 <p>支持在<code>if</code>条件判断语句中进行临时变量初始化</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">std<span style="color:#666">::</span>map<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int</span>, std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> m;
 std<span style="color:#666">::</span>mutex mx;
@@ -494,12 +505,12 @@ std<span style="color:#666">::</span>mutex mx;
         std<span style="color:#666">::</span>cerr <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;Token must not be a keyword</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
     }
 }
-</code></pre></div><h1 id="4-shared_mutexhttpsencppreferencecomwcppthreadshared_mutex">4 <a href="https://en.cppreference.com/w/cpp/thread/shared_mutex" target="_blank" rel="noopener">shared_mutex</a></h1>
+</code></pre></div><h2 id="4-shared_mutexhttpsencppreferencecomwcppthreadshared_mutex">4. <a href="https://en.cppreference.com/w/cpp/thread/shared_mutex" target="_blank" rel="noopener">shared_mutex</a></h2>
 <p>C++11的<code>std::mutex</code>是独占的（即不区分读写锁），通过<code>lock</code>或<code>try_lock</code>去占取mutex。C++17的<code>shared_mutex</code>提供更细的控制，可以被<code>lock</code>或<code>lock_shared</code>加锁，前者独占（write）后者共享（read）。</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">std<span style="color:#666">::</span>shared_mutex mutex_;
 std<span style="color:#666">::</span>unique_lock lock(mutex_);<span style="color:#080;font-style:italic">// write mode
 </span><span style="color:#080;font-style:italic"></span>std<span style="color:#666">::</span>shared_lock lock(mutex_);<span style="color:#080;font-style:italic">// read mode
-</span></code></pre></div><h1 id="5-string_viewhttpsencppreferencecomwcppstringbasic_string_view">5 <a href="https://en.cppreference.com/w/cpp/string/basic_string_view" target="_blank" rel="noopener">string_view</a></h1>
+</span></code></pre></div><h2 id="5-string_viewhttpsencppreferencecomwcppstringbasic_string_view">5. <a href="https://en.cppreference.com/w/cpp/string/basic_string_view" target="_blank" rel="noopener">string_view</a></h2>
 <blockquote>
 <p>The class template basic_string_view describes an object that can <strong>refer to</strong> a constant contiguous sequence of CharT with the first element of the sequence at position zero. A typical implementation holds only two members: a <strong>pointer</strong> to constant CharT and a <strong>size</strong>.</p>
 </blockquote>
@@ -537,7 +548,7 @@ std<span style="color:#666">::</span>unique_lock lock(mutex_);<span style="color
 org str addr:0x7fffffffe280, str size:12
 view str addr:0x7fffffffe280, str size:12
 sub str addr:0x7fffffffe284, str size:4
-</code></pre></div><h1 id="6-stdanyhttpsencppreferencecomwcpputilityany">6 <a href="https://en.cppreference.com/w/cpp/utility/any" target="_blank" rel="noopener">std::any</a></h1>
+</code></pre></div><h2 id="6-stdanyhttpsencppreferencecomwcpputilityany">6. <a href="https://en.cppreference.com/w/cpp/utility/any" target="_blank" rel="noopener">std::any</a></h2>
 <p>类似 <code>void *</code>的含义，但<code>any</code>会记录类型，在<code>std::any_cast</code>时做类型检查，在对象释放时根据类型进行析构。</p>
 <p>case study:</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;any&gt;</span><span style="color:#080">
@@ -589,7 +600,7 @@ cast int to float: bad any_cast
 i: has value <span style="color:#666">2</span>
 no value
 <span style="color:#666">3</span>
-</code></pre></div><h1 id="7-stdoptionalhttpsencppreferencecomwcpputilityoptional">7 <a href="https://en.cppreference.com/w/cpp/utility/optional" target="_blank" rel="noopener">std::optional</a></h1>
+</code></pre></div><h2 id="7-stdoptionalhttpsencppreferencecomwcpputilityoptional">7. <a href="https://en.cppreference.com/w/cpp/utility/optional" target="_blank" rel="noopener">std::optional</a></h2>
 <blockquote>
 <p>The class template std::optional manages an optional contained value, i.e. a value that <strong>may or may</strong> not be present.</p>
 </blockquote>
@@ -633,7 +644,7 @@ no value
 check optional value through has_value member func
 create<span style="color:#666">(</span><span style="color:#a2f">false</span><span style="color:#666">)</span> returned empty
 create2<span style="color:#666">(</span><span style="color:#a2f">true</span><span style="color:#666">)</span> returned Godzilla
-</code></pre></div><h1 id="8-stdvarianthttpsencppreferencecomwcpputilityvariant">8 <a href="https://en.cppreference.com/w/cpp/utility/variant" target="_blank" rel="noopener">std::variant</a></h1>
+</code></pre></div><h2 id="8-stdvarianthttpsencppreferencecomwcpputilityvariant">8. <a href="https://en.cppreference.com/w/cpp/utility/variant" target="_blank" rel="noopener">std::variant</a></h2>
 <blockquote>
 <p>The class template std::variant represents a <strong>type-safe union</strong>.</p>
 </blockquote>
