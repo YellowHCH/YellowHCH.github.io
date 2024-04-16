@@ -6,10 +6,37 @@
     <description>Recent content in Tags on ch_huang</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 04 Jan 2024 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 23 Mar 2024 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="https://yellowhch.github.io/tags/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>ai compiler</title>
+      <link>https://yellowhch.github.io/tags/ai-compiler/</link>
+      <pubDate>Sat, 23 Mar 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/ai-compiler/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>ByteIR</title>
+      <link>https://yellowhch.github.io/tags/byteir/</link>
+      <pubDate>Sat, 23 Mar 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/byteir/</guid>
+      <description></description>
+    </item>
+    
+    <item>
+      <title>MLIR</title>
+      <link>https://yellowhch.github.io/tags/mlir/</link>
+      <pubDate>Sat, 23 Mar 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/tags/mlir/</guid>
+      <description></description>
+    </item>
     
     <item>
       <title>C&#43;&#43;</title>

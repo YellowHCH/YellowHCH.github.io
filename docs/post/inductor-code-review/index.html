@@ -187,7 +187,7 @@
 <p>主入口是 compile_fx 函数，在dynamo中</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#a2f">@register_backend</span>
 <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">inductor</span>(<span style="color:#666">*</span>args, <span style="color:#666">**</span>kwargs):
-    <span style="color:#080;font-style:italic"># do import here to avoid loading inductor into memory when it is not used</span>
+    <span style="color:#080;font-style:italic"># do import here to avoid loading inductor into memory when it is not used</span>
     <span style="color:#a2f;font-weight:bold">from</span> <span style="color:#00f;font-weight:bold">torch._inductor.compile_fx</span> <span style="color:#a2f;font-weight:bold">import</span> compile_fx
 
     <span style="color:#a2f;font-weight:bold">return</span> compile_fx(<span style="color:#666">*</span>args, <span style="color:#666">**</span>kwargs)
@@ -212,30 +212,30 @@
 <h3 id="dynamo之外的情形的处理">dynamo之外的情形的处理</h3>
 </li>
 </ul>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 根据传入的patches 去wrap inner_compile.</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 根据传入的patches 去wrap inner_compile.</span>
     <span style="color:#a2f;font-weight:bold">if</span> config_patches:
-        <span style="color:#a2f;font-weight:bold">with</span> config<span style="color:#666">.</span>patch(config_patches):  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
+        <span style="color:#a2f;font-weight:bold">with</span> config<span style="color:#666">.</span>patch(config_patches):  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
             <span style="color:#a2f;font-weight:bold">return</span> compile_fx(
                 model_,
                 example_inputs_,
-                <span style="color:#080;font-style:italic"># need extra layer of patching as backwards is compiled out of scope</span>
-                inner_compile<span style="color:#666">=</span>config<span style="color:#666">.</span>patch(config_patches)(inner_compile),  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
+                <span style="color:#080;font-style:italic"># need extra layer of patching as backwards is compiled out of scope</span>
+                inner_compile<span style="color:#666">=</span>config<span style="color:#666">.</span>patch(config_patches)(inner_compile),  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
                 decompositions<span style="color:#666">=</span>decompositions,
             )
 
-    <span style="color:#080;font-style:italic"># NOTE. 生成 dynamic library，仅对cuda生效。`inner_compile_with_cpp_wrapper` 对 non-cuda 后端的branch，直接调用 inner_compile 完成编译；对 cuda 后端则先调用 inner_compile 编译并实际执行，然后将 cpp_wrapper 改成 True， 去生成 cpp wrapper code 以及生成动态库。</span>
+    <span style="color:#080;font-style:italic"># NOTE. 生成 dynamic library，仅对cuda生效。`inner_compile_with_cpp_wrapper` 对 non-cuda 后端的branch，直接调用 inner_compile 完成编译；对 cuda 后端则先调用 inner_compile 编译并实际执行，然后将 cpp_wrapper 改成 True， 去生成 cpp wrapper code 以及生成动态库。</span>
     <span style="color:#a2f;font-weight:bold">if</span> config<span style="color:#666">.</span>cpp_wrapper:
-        <span style="color:#a2f;font-weight:bold">with</span> config<span style="color:#666">.</span>patch(  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
+        <span style="color:#a2f;font-weight:bold">with</span> config<span style="color:#666">.</span>patch(  <span style="color:#080;font-style:italic"># type: ignore[attr-defined]</span>
             {
                 <span style="color:#b44">&#34;cpp_wrapper&#34;</span>: False,
                 <span style="color:#b44">&#34;triton.autotune_cublasLt&#34;</span>: False,
                 <span style="color:#b44">&#34;triton.cudagraphs&#34;</span>: False,
-                <span style="color:#080;font-style:italic"># CudaWrapperCodeGen relies on kernel name to find the autotuned cubin file</span>
+                <span style="color:#080;font-style:italic"># CudaWrapperCodeGen relies on kernel name to find the autotuned cubin file</span>
                 <span style="color:#b44">&#34;triton.unique_kernel_names&#34;</span>: True,
             }
         ), V<span style="color:#666">.</span>set_real_inputs(
             example_inputs_
-        ):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
+        ):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
             <span style="color:#a2f;font-weight:bold">return</span> compile_fx(
                 model_,
                 example_inputs_,
@@ -249,7 +249,7 @@
         decompositions<span style="color:#666">=</span>decompositions,
     )
 
-    <span style="color:#080;font-style:italic"># NOTE. 如果 gm 的返回值不是 tuple，则修改 gm 将其返回值改为tuple类型，然后返回 recursive_compile_fx 的编译结果。这是用于 non-dynamo 生成的计算图。 </span>
+    <span style="color:#080;font-style:italic"># NOTE. 如果 gm 的返回值不是 tuple，则修改 gm 将其返回值改为tuple类型，然后返回 recursive_compile_fx 的编译结果。这是用于 non-dynamo 生成的计算图。 </span>
     <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">not</span> graph_returns_tuple(model_):
         <span style="color:#a2f;font-weight:bold">return</span> make_graph_return_tuple(
             model_,
@@ -257,21 +257,21 @@
             recursive_compile_fx,
         )
 
-    <span style="color:#080;font-style:italic"># NOTE. 处理 dynamo.export 生成的fx graph 中嵌入的 pytrees，调用 codegen.process_inputs 使得 inductor可以正常编译这个 graph.</span>
+    <span style="color:#080;font-style:italic"># NOTE. 处理 dynamo.export 生成的fx graph 中嵌入的 pytrees，调用 codegen.process_inputs 使得 inductor可以正常编译这个 graph.</span>
     <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(model_, torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>GraphModule):
         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(model_<span style="color:#666">.</span>graph<span style="color:#666">.</span>_codegen, _PyTreeCodeGen):
-            <span style="color:#080;font-style:italic"># this graph is the result of dynamo.export()</span>
+            <span style="color:#080;font-style:italic"># this graph is the result of dynamo.export()</span>
             <span style="color:#a2f;font-weight:bold">return</span> handle_dynamo_export_graph(
                 model_,
                 example_inputs_,
                 recursive_compile_fx,
             )
 
-        <span style="color:#080;font-style:italic"># Since handle_dynamo_export_graph will trigger compile_fx again,</span>
-        <span style="color:#080;font-style:italic"># Move these passes after handle_dynamo_export_graph to avoid repeated calls.</span>
+        <span style="color:#080;font-style:italic"># Since handle_dynamo_export_graph will trigger compile_fx again,</span>
+        <span style="color:#080;font-style:italic"># Move these passes after handle_dynamo_export_graph to avoid repeated calls.</span>
         model_ <span style="color:#666">=</span> pre_grad_passes(model_, example_inputs_)
 
-    <span style="color:#080;font-style:italic"># NOTE. 处理 non-dynamo 生成的 graph，inputs 没有被flat.</span>
+    <span style="color:#080;font-style:italic"># NOTE. 处理 non-dynamo 生成的 graph，inputs 没有被flat.</span>
     <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">any</span>(<span style="color:#a2f">isinstance</span>(x, (<span style="color:#a2f">list</span>, <span style="color:#a2f">tuple</span>, <span style="color:#a2f">dict</span>)) <span style="color:#a2f;font-weight:bold">for</span> x <span style="color:#a2f;font-weight:bold">in</span> example_inputs_):
         <span style="color:#a2f;font-weight:bold">return</span> flatten_graph_inputs(
             model_,
@@ -283,23 +283,23 @@
 <h3 id="推理训练通用的-forward-graph-的compiler">推理/训练通用的 forward graph 的compiler</h3>
 </li>
 </ul>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 区别处理推理场景与训练场景的逻辑.</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 区别处理推理场景与训练场景的逻辑.</span>
     <span style="color:#a2f">@dynamo_utils.dynamo_timed</span>
     <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">fw_compiler_base</span>(
         model: torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>GraphModule,
         example_inputs: List[torch<span style="color:#666">.</span>Tensor],
         is_inference: <span style="color:#a2f">bool</span>,
     ):
-        <span style="color:#080;font-style:italic"># NOTE. 对推理场景做优化。尝试（1）常量折叠（2）替换随机函数（3）计算图拓扑序重排，graph重新生成，去除autograd生成的死节点。</span>
+        <span style="color:#080;font-style:italic"># NOTE. 对推理场景做优化。尝试（1）常量折叠（2）替换随机函数（3）计算图拓扑序重排，graph重新生成，去除autograd生成的死节点。</span>
         <span style="color:#a2f;font-weight:bold">if</span> is_inference:
-            <span style="color:#080;font-style:italic"># partition_fn won&#39;t be called</span>
+            <span style="color:#080;font-style:italic"># partition_fn won&#39;t be called</span>
             joint_graph_passes(model)
 
         num_rng_seed_offset_inputs <span style="color:#666">=</span> <span style="color:#666">2</span> <span style="color:#a2f;font-weight:bold">if</span> functorch_config<span style="color:#666">.</span>functionalize_rng_ops <span style="color:#a2f;font-weight:bold">else</span> <span style="color:#666">0</span>
         fixed <span style="color:#666">=</span> <span style="color:#a2f">len</span>(example_inputs) <span style="color:#666">-</span> num_example_inputs <span style="color:#666">-</span> num_rng_seed_offset_inputs
         user_visible_outputs <span style="color:#666">=</span> <span style="color:#a2f">set</span>()
 
-        <span style="color:#080;font-style:italic"># NOTE. 是否保持outputs的stride，如果是单纯的推理场景，一般不太需要保持。</span>
+        <span style="color:#080;font-style:italic"># NOTE. 是否保持outputs的stride，如果是单纯的推理场景，一般不太需要保持。</span>
         <span style="color:#a2f;font-weight:bold">if</span> config<span style="color:#666">.</span>keep_output_stride:
             <span style="color:#666">*</span>_, model_outputs_node <span style="color:#666">=</span> model<span style="color:#666">.</span>graph<span style="color:#666">.</span>nodes
             <span style="color:#a2f;font-weight:bold">assert</span> model_outputs_node<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#34;output&#34;</span>
@@ -307,13 +307,13 @@
             num_model_outputs <span style="color:#666">=</span> <span style="color:#a2f">len</span>(model_outputs)
 
             context <span style="color:#666">=</span> torch<span style="color:#666">.</span>_guards<span style="color:#666">.</span>TracingContext<span style="color:#666">.</span>get()
-            <span style="color:#080;font-style:italic"># NOTE. joint-graph的outputs由原始计算图的outputs和保存给反向图的inputs组成，一般原始outputs都是在outputs的最前面，但是 aot-autograd 会把inplace updated tensors 放在最前面，这导致原始outputs的位置难以明确，所以需要用`original_output_start_index`去指明这个位置（根据mutated inputs数量即可获得）。</span>
+            <span style="color:#080;font-style:italic"># NOTE. joint-graph的outputs由原始计算图的outputs和保存给反向图的inputs组成，一般原始outputs都是在outputs的最前面，但是 aot-autograd 会把inplace updated tensors 放在最前面，这导致原始outputs的位置难以明确，所以需要用`original_output_start_index`去指明这个位置（根据mutated inputs数量即可获得）。</span>
             <span style="color:#a2f;font-weight:bold">if</span> context <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None <span style="color:#a2f;font-weight:bold">and</span> context<span style="color:#666">.</span>fw_metadata:
                 original_output_start_index <span style="color:#666">=</span> context<span style="color:#666">.</span>fw_metadata<span style="color:#666">.</span>num_mutated_inputs
             <span style="color:#a2f;font-weight:bold">else</span>:
                 original_output_start_index <span style="color:#666">=</span> <span style="color:#666">0</span>
 
-            <span style="color:#080;font-style:italic"># NOTE. 获取原始outputs的数量.</span>
+            <span style="color:#080;font-style:italic"># NOTE. 获取原始outputs的数量.</span>
             <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(model_, torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>GraphModule):
                 <span style="color:#666">*</span>_, orig_model_outputs_node <span style="color:#666">=</span> model_<span style="color:#666">.</span>graph<span style="color:#666">.</span>nodes
                 <span style="color:#a2f;font-weight:bold">assert</span> orig_model_outputs_node<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#34;output&#34;</span>
@@ -326,20 +326,20 @@
 
             <span style="color:#a2f;font-weight:bold">assert</span> num_orig_model_outputs <span style="color:#666">&lt;=</span> num_model_outputs
 
-            <span style="color:#080;font-style:italic"># We makes the following assumption</span>
-            <span style="color:#080;font-style:italic"># For inference</span>
-            <span style="color:#080;font-style:italic">#   len(orig_model_outputs) == len(model_outputs)</span>
-            <span style="color:#080;font-style:italic"># For training</span>
-            <span style="color:#080;font-style:italic">#   len(orig_model_outputs) &lt;= len(model_outputs)</span>
-            <span style="color:#080;font-style:italic"># During training, most of the time the model_outputs starts with</span>
-            <span style="color:#080;font-style:italic"># orignal module&#39;s outputs followed by saved activations.</span>
-            <span style="color:#080;font-style:italic"># But this can be not true if the model have inplace updated tensors.</span>
-            <span style="color:#080;font-style:italic"># AOTAutograd will make those tensors being returned before the orignal</span>
-            <span style="color:#080;font-style:italic"># module&#39;s output.</span>
-            <span style="color:#080;font-style:italic"># To make things safe, we&#39;ll use original_output_start_index field</span>
-            <span style="color:#080;font-style:italic"># set by AOTAutograd to decide where the original module outputs start.</span>
+            <span style="color:#080;font-style:italic"># We makes the following assumption</span>
+            <span style="color:#080;font-style:italic"># For inference</span>
+            <span style="color:#080;font-style:italic">#   len(orig_model_outputs) == len(model_outputs)</span>
+            <span style="color:#080;font-style:italic"># For training</span>
+            <span style="color:#080;font-style:italic">#   len(orig_model_outputs) &lt;= len(model_outputs)</span>
+            <span style="color:#080;font-style:italic"># During training, most of the time the model_outputs starts with</span>
+            <span style="color:#080;font-style:italic"># orignal module&#39;s outputs followed by saved activations.</span>
+            <span style="color:#080;font-style:italic"># But this can be not true if the model have inplace updated tensors.</span>
+            <span style="color:#080;font-style:italic"># AOTAutograd will make those tensors being returned before the orignal</span>
+            <span style="color:#080;font-style:italic"># module&#39;s output.</span>
+            <span style="color:#080;font-style:italic"># To make things safe, we&#39;ll use original_output_start_index field</span>
+            <span style="color:#080;font-style:italic"># set by AOTAutograd to decide where the original module outputs start.</span>
 
-            <span style="color:#080;font-style:italic"># NOTE. 遍历原始的outputs，填入`user_visible_outputs`，`GraphLowering`会根据这个set去判断是否考虑 keep outputs stride.</span>
+            <span style="color:#080;font-style:italic"># NOTE. 遍历原始的outputs，填入`user_visible_outputs`，`GraphLowering`会根据这个set去判断是否考虑 keep outputs stride.</span>
             user_visible_outputs <span style="color:#666">=</span> {
                 n<span style="color:#666">.</span>name
                 <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> model_outputs[
@@ -364,11 +364,11 @@
 <h3 id="定义-fw_compiler-inference_compiler-bw_compiler">定义 fw_compiler, inference_compiler, bw_compiler</h3>
 </li>
 </ul>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. fw_compiler 是用于训练的。</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. fw_compiler 是用于训练的。</span>
     fw_compiler <span style="color:#666">=</span> functools<span style="color:#666">.</span>partial(fw_compiler_base, is_inference<span style="color:#666">=</span>False)
 
-    <span style="color:#080;font-style:italic"># NOTE. `inference_compiler` 用于推理.</span>
-    <span style="color:#080;font-style:italic"># NOTE. 如果开启了freezing功能且当前上下文关闭了grad，则生成infer用的compiler，其会调用 freeze 做常量折叠优化，算子layout优化等. 否则直接偏特化 fw_compiler_base</span>
+    <span style="color:#080;font-style:italic"># NOTE. `inference_compiler` 用于推理.</span>
+    <span style="color:#080;font-style:italic"># NOTE. 如果开启了freezing功能且当前上下文关闭了grad，则生成infer用的compiler，其会调用 freeze 做常量折叠优化，算子layout优化等. 否则直接偏特化 fw_compiler_base</span>
     <span style="color:#a2f;font-weight:bold">if</span> config<span style="color:#666">.</span>freezing <span style="color:#a2f;font-weight:bold">and</span> <span style="color:#a2f;font-weight:bold">not</span> torch<span style="color:#666">.</span>is_grad_enabled():
         inference_compiler <span style="color:#666">=</span> functools<span style="color:#666">.</span>partial(
             fw_compiler_freezing,
@@ -399,7 +399,7 @@
 <h3 id="定义切分aot-autograd生成的joint-graph的函数">定义切分aot-autograd生成的joint-graph的函数</h3>
 </li>
 </ul>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 该函数用于在训练中，对 aot-autograd 产生的 joint graph 进行切分，使用 min-cut-max-flow 算法对graph切分，用 recomputing 的代价减少内存开销（反向图的很多输入是正向图的中间结果，一般情况下需要对中间节点进行保存，以给反向图计算用，采用重计算的方式减少中间节点）。</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 该函数用于在训练中，对 aot-autograd 产生的 joint graph 进行切分，使用 min-cut-max-flow 算法对graph切分，用 recomputing 的代价减少内存开销（反向图的很多输入是正向图的中间结果，一般情况下需要对中间节点进行保存，以给反向图计算用，采用重计算的方式减少中间节点）。</span>
     <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">partition_fn</span>(graph, joint_inputs, <span style="color:#666">**</span>kwargs):
         joint_graph_passes(graph)
         <span style="color:#a2f;font-weight:bold">return</span> min_cut_rematerialization_partition(
@@ -410,11 +410,11 @@
 <h3 id="调用aot_autograd进行计算图编译">调用aot_autograd进行计算图编译</h3>
 </li>
 </ul>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 编译阶段需要在 fake mode下执行，以正确的做符号执行。`detect_fake_mode`从inputs推导当前graph的fake mode，如果没有推出来那么构造允许实例inputs作为输入的fake mode。在fake mode下，torch在调度op实现时会调度到FakeTensorMode下的diapatch，从而进行符号执行。如果没有强制使用fake-mode，torch也会根据inputs/outputs类型去推导调度到哪个后端，简单的情形下也是可行的，但是无法正确处理没有inputs的op。</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 编译阶段需要在 fake mode下执行，以正确的做符号执行。`detect_fake_mode`从inputs推导当前graph的fake mode，如果没有推出来那么构造允许实例inputs作为输入的fake mode。在fake mode下，torch在调度op实现时会调度到FakeTensorMode下的diapatch，从而进行符号执行。如果没有强制使用fake-mode，torch也会根据inputs/outputs类型去推导调度到哪个后端，简单的情形下也是可行的，但是无法正确处理没有inputs的op。</span>
 
-    <span style="color:#080;font-style:italic"># TODO: can add logging before/after the call to create_aot_dispatcher_function</span>
-    <span style="color:#080;font-style:italic"># in torch._functorch/aot_autograd.py::aot_module_simplified::aot_function_simplified::new_func</span>
-    <span style="color:#080;font-style:italic"># once torchdynamo is merged into pytorch</span>
+    <span style="color:#080;font-style:italic"># TODO: can add logging before/after the call to create_aot_dispatcher_function</span>
+    <span style="color:#080;font-style:italic"># in torch._functorch/aot_autograd.py::aot_module_simplified::aot_function_simplified::new_func</span>
+    <span style="color:#080;font-style:italic"># once torchdynamo is merged into pytorch</span>
     fake_mode <span style="color:#666">=</span> detect_fake_mode(example_inputs_) <span style="color:#a2f;font-weight:bold">or</span> torch<span style="color:#666">.</span>_subclasses<span style="color:#666">.</span>FakeTensorMode(
         allow_non_fake_inputs<span style="color:#666">=</span>True
     )
@@ -422,10 +422,10 @@
         torch<span style="color:#666">.</span>_guards<span style="color:#666">.</span>TracingContext<span style="color:#666">.</span>get() <span style="color:#a2f;font-weight:bold">or</span> torch<span style="color:#666">.</span>_guards<span style="color:#666">.</span>TracingContext(fake_mode)
     )
 
-    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode), torch<span style="color:#666">.</span>_guards<span style="color:#666">.</span>tracing(  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
+    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode), torch<span style="color:#666">.</span>_guards<span style="color:#666">.</span>tracing(  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
         tracing_context
     ), compiled_autograd<span style="color:#666">.</span>disable():
-        <span style="color:#080;font-style:italic"># NOTE. `aot_autograd`对graph进行反向图构建，调用`partition`对joint-graph进行切分，调用fw_compiler/bw_compiler 对切分出的fw/bw graph 进行编译，另外也会使用`inference_compiler`对推理场景的fw graph进行编译.</span>
+        <span style="color:#080;font-style:italic"># NOTE. `aot_autograd`对graph进行反向图构建，调用`partition`对joint-graph进行切分，调用fw_compiler/bw_compiler 对切分出的fw/bw graph 进行编译，另外也会使用`inference_compiler`对推理场景的fw graph进行编译.</span>
         <span style="color:#a2f;font-weight:bold">return</span> aot_autograd(
             fw_compiler<span style="color:#666">=</span>fw_compiler,
             bw_compiler<span style="color:#666">=</span>bw_compiler,
@@ -468,11 +468,11 @@
 </span><span style="color:#b44">    If you change the argument list for this funtion, make sure you
 </span><span style="color:#b44">    also update the call to save_args_for_compile_fx_inner below accordingly.
 </span><span style="color:#b44">    &#34;&#34;&#34;</span>
-    <span style="color:#080;font-style:italic"># NOTE. 如果graph中call op的数量为0，则直接返回，不需要编译优化.</span>
+    <span style="color:#080;font-style:italic"># NOTE. 如果graph中call op的数量为0，则直接返回，不需要编译优化.</span>
     <span style="color:#a2f;font-weight:bold">if</span> dynamo_utils<span style="color:#666">.</span>count_calls(gm<span style="color:#666">.</span>graph) <span style="color:#666">==</span> <span style="color:#666">0</span>:
         <span style="color:#a2f;font-weight:bold">return</span> make_boxed_func(gm<span style="color:#666">.</span>forward)
 
-    <span style="color:#080;font-style:italic"># NOTE. `save_args_for_compile_fx_inner`: </span>
+    <span style="color:#080;font-style:italic"># NOTE. `save_args_for_compile_fx_inner`: </span>
     <span style="color:#b44">&#34;&#34;&#34;
 </span><span style="color:#b44">    This function is used to save arguments for a compile_fx_inner function call
 </span><span style="color:#b44">    to the file system.  Later on one can replay the compile_fx_inner call
@@ -501,7 +501,7 @@
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#a2f;font-weight:bold">if</span> cudagraphs <span style="color:#a2f;font-weight:bold">is</span> None:
         cudagraphs <span style="color:#666">=</span> BoxedBool(config<span style="color:#666">.</span>triton<span style="color:#666">.</span>cudagraphs)
 
-    <span style="color:#080;font-style:italic"># Inputs to fx_codegen_and_compile</span>
+    <span style="color:#080;font-style:italic"># Inputs to fx_codegen_and_compile</span>
     graph_args <span style="color:#666">=</span> [gm, example_inputs]
     graph_kwargs <span style="color:#666">=</span> {
         <span style="color:#b44">&#34;cudagraphs&#34;</span>: cudagraphs,
@@ -516,11 +516,11 @@
     }
         
     compiled_graph: CompiledFxGraph <span style="color:#666">=</span> fx_codegen_and_compile(
-        <span style="color:#666">*</span>graph_args, <span style="color:#666">**</span>graph_kwargs  <span style="color:#080;font-style:italic"># type: ignore[arg-type]</span>
+        <span style="color:#666">*</span>graph_args, <span style="color:#666">**</span>graph_kwargs  <span style="color:#080;font-style:italic"># type: ignore[arg-type]</span>
     )
 </code></pre></div><p>后处理（忽略cudagraph相关的逻辑分支）</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. post-process. 调用`align_inputs`处理inputs的内存对齐，对non-fixed inputs进行内存对齐检查，没对齐的话则调用`copy_misaligned_inputs`进行内存对齐处理（实际是用as_strided方法实现）。 </span>
-    <span style="color:#080;font-style:italic"># cudagraphs does its own aligning of inputs</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. post-process. 调用`align_inputs`处理inputs的内存对齐，对non-fixed inputs进行内存对齐检查，没对齐的话则调用`copy_misaligned_inputs`进行内存对齐处理（实际是用as_strided方法实现）。 </span>
+    <span style="color:#080;font-style:italic"># cudagraphs does its own aligning of inputs</span>
     <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">not</span> cudagraphs:
         new_callable <span style="color:#666">=</span> align_inputs(
             compiled_graph<span style="color:#666">.</span>get_current_callable(), example_inputs, <span style="color:#a2f">range</span>(num_fixed)
@@ -528,7 +528,7 @@
         <span style="color:#a2f;font-weight:bold">if</span> new_callable <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> compiled_graph<span style="color:#666">.</span>get_current_callable():
             compiled_graph<span style="color:#666">.</span>current_callable <span style="color:#666">=</span> new_callable
 
-    <span style="color:#080;font-style:italic"># aot autograd needs to know to pass in inputs as a list</span>
+    <span style="color:#080;font-style:italic"># aot autograd needs to know to pass in inputs as a list</span>
     compiled_graph<span style="color:#666">.</span>_boxed_call <span style="color:#666">=</span> True
     <span style="color:#a2f;font-weight:bold">return</span> compiled_graph
 </code></pre></div><ul>
@@ -537,17 +537,17 @@
 </li>
 </ul>
 <p>做一些autograd的后处理，然后用GraphLowering进行fx graph的lowering（GraphLowering.run）和codegen（Graphlowerin.compile_to_fn），生成CompiledFxGraph</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 遍历node，将aten.view替换成aten.reshape</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#080;font-style:italic"># NOTE. 遍历node，将aten.view替换成aten.reshape</span>
     view_to_reshape(gm)
     fake_mode <span style="color:#666">=</span> fake_tensor_prop(gm, example_inputs)
 
-    <span style="color:#080;font-style:italic"># NOTE. 处理`functionalized`后的graph，无效代码消除等.</span>
-    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
-        <span style="color:#080;font-style:italic"># has some issues with memory in training</span>
+    <span style="color:#080;font-style:italic"># NOTE. 处理`functionalized`后的graph，无效代码消除等.</span>
+    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
+        <span style="color:#080;font-style:italic"># has some issues with memory in training</span>
         post_grad_passes(gm, is_inference<span style="color:#666">=</span>is_inference)
         V<span style="color:#666">.</span>debug<span style="color:#666">.</span>fx_graph_transformed(gm, example_inputs)
 
-    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
+    <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_fake_mode(fake_mode):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
         graph <span style="color:#666">=</span> GraphLowering(
             gm,
             shape_env<span style="color:#666">=</span>shape_env,
@@ -557,7 +557,7 @@
             aot_mode<span style="color:#666">=</span>aot_mode,
             user_visible_outputs<span style="color:#666">=</span>user_visible_outputs,
         )
-        <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_graph_handler(graph):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
+        <span style="color:#a2f;font-weight:bold">with</span> V<span style="color:#666">.</span>set_graph_handler(graph):  <span style="color:#080;font-style:italic"># type: ignore[call-arg]</span>
             graph<span style="color:#666">.</span>run(<span style="color:#666">*</span>example_inputs)
             compiled_fn <span style="color:#666">=</span> graph<span style="color:#666">.</span>compile_to_fn()
 
@@ -614,11 +614,11 @@
 </span><span style="color:#b44">        &#34;&#34;&#34;</span>
         self<span style="color:#666">.</span>env <span style="color:#666">=</span> initial_env <span style="color:#a2f;font-weight:bold">if</span> initial_env <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None <span style="color:#a2f;font-weight:bold">else</span> {}
         <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>module<span style="color:#666">.</span>graph<span style="color:#666">.</span>nodes:
-            <span style="color:#080;font-style:italic"># NOTE. 先检查当前node是否被执行过，应该是考虑到图中有环</span>
+            <span style="color:#080;font-style:italic"># NOTE. 先检查当前node是否被执行过，应该是考虑到图中有环</span>
             <span style="color:#a2f;font-weight:bold">if</span> node <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>env:
                 <span style="color:#a2f;font-weight:bold">continue</span>
-            <span style="color:#080;font-style:italic"># NOTE. 调用 run_node 执行这个node，并将结果保存在env中</span>
-            <span style="color:#080;font-style:italic"># NOTE. 调用 run_node 的方式是 self.run_node，类似 c++ 中 this指针，所以派生类的 run 会动态的调用到派生类的 run_node 的实现上。</span>
+            <span style="color:#080;font-style:italic"># NOTE. 调用 run_node 执行这个node，并将结果保存在env中</span>
+            <span style="color:#080;font-style:italic"># NOTE. 调用 run_node 的方式是 self.run_node，类似 c++ 中 this指针，所以派生类的 run 会动态的调用到派生类的 run_node 的实现上。</span>
             <span style="color:#a2f;font-weight:bold">try</span>:
                 self<span style="color:#666">.</span>env[node] <span style="color:#666">=</span> self<span style="color:#666">.</span>run_node(node)
             <span style="color:#a2f;font-weight:bold">except</span> <span style="color:#d2413a;font-weight:bold">Exception</span> <span style="color:#a2f;font-weight:bold">as</span> e:
@@ -626,7 +626,7 @@
             <span style="color:#a2f;font-weight:bold">if</span> self<span style="color:#666">.</span>garbage_collect_values:
                 <span style="color:#a2f;font-weight:bold">for</span> to_delete <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>user_to_last_uses<span style="color:#666">.</span>get(node, []):
                     <span style="color:#a2f;font-weight:bold">del</span> self<span style="color:#666">.</span>env[to_delete]
-            <span style="color:#080;font-style:italic"># NOTE. 如果是output 节点，说明图已经执行完了，返回整个图的执行结果</span>
+            <span style="color:#080;font-style:italic"># NOTE. 如果是output 节点，说明图已经执行完了，返回整个图的执行结果</span>
             <span style="color:#a2f;font-weight:bold">if</span> node<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#39;output&#39;</span>:
                 output_val <span style="color:#666">=</span> self<span style="color:#666">.</span>env[node]
                 <span style="color:#a2f;font-weight:bold">return</span> self<span style="color:#666">.</span>module<span style="color:#666">.</span>graph<span style="color:#666">.</span>process_outputs(output_val) <span style="color:#a2f;font-weight:bold">if</span> enable_io_processing <span style="color:#a2f;font-weight:bold">else</span> output_val
@@ -649,13 +649,13 @@
 </span><span style="color:#b44">        Returns:
 </span><span style="color:#b44">            Any: The result of executing ``n``
 </span><span style="color:#b44">        &#34;&#34;&#34;</span>
-        <span style="color:#080;font-style:italic"># NOTE. 保存当前node的meta信息到global的上下文（一个map）</span>
+        <span style="color:#080;font-style:italic"># NOTE. 保存当前node的meta信息到global的上下文（一个map）</span>
         <span style="color:#a2f;font-weight:bold">with</span> self<span style="color:#666">.</span>_set_current_node(n):
-            <span style="color:#080;font-style:italic"># NOTE. 从 `env` 中获取当前node的操作数，函数`run`会将每个节点的执行结果保存在env，所以当前节点依赖的操作数应该可以从 `env`中获取。</span>
+            <span style="color:#080;font-style:italic"># NOTE. 从 `env` 中获取当前node的操作数，函数`run`会将每个节点的执行结果保存在env，所以当前节点依赖的操作数应该可以从 `env`中获取。</span>
             args, kwargs <span style="color:#666">=</span> self<span style="color:#666">.</span>fetch_args_kwargs_from_env(n)
             <span style="color:#a2f;font-weight:bold">assert</span> <span style="color:#a2f">isinstance</span>(args, <span style="color:#a2f">tuple</span>)
             <span style="color:#a2f;font-weight:bold">assert</span> <span style="color:#a2f">isinstance</span>(kwargs, <span style="color:#a2f">dict</span>)
-            <span style="color:#080;font-style:italic"># NOTE. 根据当前节点的op类型选择对应的执行函数，如 call_function, call_method...</span>
+            <span style="color:#080;font-style:italic"># NOTE. 根据当前节点的op类型选择对应的执行函数，如 call_function, call_method...</span>
             <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#a2f">getattr</span>(self, n<span style="color:#666">.</span>op)(n<span style="color:#666">.</span>target, args, kwargs)
 </code></pre></div><ul>
 <li>
@@ -668,7 +668,7 @@
 </span><span style="color:#b44">        Execute a ``call_function`` node and return the result.
 </span><span style="color:#b44">        &#34;&#34;&#34;</span>
         <span style="color:#a2f;font-weight:bold">assert</span> <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f">isinstance</span>(target, <span style="color:#a2f">str</span>)
-        <span style="color:#080;font-style:italic"># Execute the function and return the result</span>
+        <span style="color:#080;font-style:italic"># Execute the function and return the result</span>
         <span style="color:#a2f;font-weight:bold">return</span> target(<span style="color:#666">*</span>args, <span style="color:#666">**</span>kwargs)
 </code></pre></div><ul>
 <li>
@@ -681,28 +681,28 @@
 <p><code>call_finction</code>仅仅是实现将 op lowering到 Inductor IR，后处理还需要在合适的node进行realize。</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">run_node</span>(self, n: torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>Node):
         origins <span style="color:#666">=</span> {n}
-        <span style="color:#080;font-style:italic"># NOTE. 经过dynamo和functionlization之后，graph中都是call_function节点</span>
+        <span style="color:#080;font-style:italic"># NOTE. 经过dynamo和functionlization之后，graph中都是call_function节点</span>
         <span style="color:#a2f;font-weight:bold">if</span> n<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#34;call_function&#34;</span>:
             args, kwargs <span style="color:#666">=</span> self<span style="color:#666">.</span>fetch_args_kwargs_from_env(n)
             origins <span style="color:#666">|=</span> gather_origins(args, kwargs)
         <span style="color:#a2f;font-weight:bold">with</span> ir<span style="color:#666">.</span>IRNode<span style="color:#666">.</span>current_origins(origins), self<span style="color:#666">.</span>set_current_node(n):
             <span style="color:#666">...</span>
             <span style="color:#a2f;font-weight:bold">elif</span> n<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#34;call_function&#34;</span> <span style="color:#a2f;font-weight:bold">and</span> n<span style="color:#666">.</span>target <span style="color:#a2f;font-weight:bold">in</span> layout_constraints:
-                <span style="color:#080;font-style:italic"># NOTE. 调用 call_function 函数进行lowering and codegen</span>
+                <span style="color:#080;font-style:italic"># NOTE. 调用 call_function 函数进行lowering and codegen</span>
                 args, kwargs <span style="color:#666">=</span> layout_constraints[n<span style="color:#666">.</span>target](n, <span style="color:#666">*</span>args, <span style="color:#666">**</span>kwargs)
                 result <span style="color:#666">=</span> self<span style="color:#666">.</span>call_function(n<span style="color:#666">.</span>target, args, kwargs)
             <span style="color:#666">...</span>
             <span style="color:#a2f;font-weight:bold">else</span>:
                 result <span style="color:#666">=</span> <span style="color:#a2f">super</span>()<span style="color:#666">.</span>run_node(n)
 
-            <span style="color:#080;font-style:italic"># NOTE. 后处理 outputs中的stride,offset，使result保持stride order：`result = ir.ExternKernel.require_stride_order(result, stride_order)`</span>
-            <span style="color:#080;font-style:italic"># require the same stride order for dense outputs,</span>
-            <span style="color:#080;font-style:italic"># 1. user-land view() will not throw because inductor</span>
-            <span style="color:#080;font-style:italic"># output different strides than eager</span>
-            <span style="color:#080;font-style:italic"># long term the solution is to make view() always succeed</span>
-            <span style="color:#080;font-style:italic"># with infallible strides.</span>
-            <span style="color:#080;font-style:italic"># 2: as_strided ops, we need make sure its input has same size/stride with</span>
-            <span style="color:#080;font-style:italic"># eager model to align with eager behavior.</span>
+            <span style="color:#080;font-style:italic"># NOTE. 后处理 outputs中的stride,offset，使result保持stride order：`result = ir.ExternKernel.require_stride_order(result, stride_order)`</span>
+            <span style="color:#080;font-style:italic"># require the same stride order for dense outputs,</span>
+            <span style="color:#080;font-style:italic"># 1. user-land view() will not throw because inductor</span>
+            <span style="color:#080;font-style:italic"># output different strides than eager</span>
+            <span style="color:#080;font-style:italic"># long term the solution is to make view() always succeed</span>
+            <span style="color:#080;font-style:italic"># with infallible strides.</span>
+            <span style="color:#080;font-style:italic"># 2: as_strided ops, we need make sure its input has same size/stride with</span>
+            <span style="color:#080;font-style:italic"># eager model to align with eager behavior.</span>
             as_strided_ops <span style="color:#666">=</span> [
                 torch<span style="color:#666">.</span>ops<span style="color:#666">.</span>aten<span style="color:#666">.</span>as_strided<span style="color:#666">.</span>default,
                 torch<span style="color:#666">.</span>ops<span style="color:#666">.</span>aten<span style="color:#666">.</span>as_strided_<span style="color:#666">.</span>default,
@@ -717,8 +717,8 @@
             ):
                 strides <span style="color:#666">=</span> n<span style="color:#666">.</span>meta[<span style="color:#b44">&#34;val&#34;</span>]<span style="color:#666">.</span>stride()
                 dense <span style="color:#666">=</span> torch<span style="color:#666">.</span>_prims_common<span style="color:#666">.</span>is_non_overlapping_and_dense(n<span style="color:#666">.</span>meta[<span style="color:#b44">&#34;val&#34;</span>])
-                <span style="color:#080;font-style:italic"># requiring a stride order for a non-dense output wouldn&#39;t</span>
-                <span style="color:#080;font-style:italic"># recreate the same strides, and would fail with view, defer for now.</span>
+                <span style="color:#080;font-style:italic"># requiring a stride order for a non-dense output wouldn&#39;t</span>
+                <span style="color:#080;font-style:italic"># recreate the same strides, and would fail with view, defer for now.</span>
                 <span style="color:#a2f;font-weight:bold">if</span> dense <span style="color:#a2f;font-weight:bold">and</span> <span style="color:#a2f">len</span>(strides):
                     stride_order <span style="color:#666">=</span> ir<span style="color:#666">.</span>get_stride_order(strides)
                     <span style="color:#a2f;font-weight:bold">if</span> (
@@ -730,33 +730,33 @@
                         stride_order <span style="color:#666">=</span> ir<span style="color:#666">.</span>NHWC_STRIDE_ORDER
                     result <span style="color:#666">=</span> ir<span style="color:#666">.</span>ExternKernel<span style="color:#666">.</span>require_stride_order(result, stride_order)
 
-            <span style="color:#080;font-style:italic"># NOTE. 后处理，判断是否对节点进行实例化（call result.realize_hint）</span>
-            <span style="color:#080;font-style:italic"># NOTE. 选出了一些需要realize operand的op（needs_realized_inputs），检查当前节点的users中是否需要realize operand，是的话则进行realize处理。</span>
-            <span style="color:#080;font-style:italic"># Realize if (1) any user need inputs realized, or (2) there is</span>
-            <span style="color:#080;font-style:italic"># already too many reads and rematerializing can be bad.</span>
+            <span style="color:#080;font-style:italic"># NOTE. 后处理，判断是否对节点进行实例化（call result.realize_hint）</span>
+            <span style="color:#080;font-style:italic"># NOTE. 选出了一些需要realize operand的op（needs_realized_inputs），检查当前节点的users中是否需要realize operand，是的话则进行realize处理。</span>
+            <span style="color:#080;font-style:italic"># Realize if (1) any user need inputs realized, or (2) there is</span>
+            <span style="color:#080;font-style:italic"># already too many reads and rematerializing can be bad.</span>
             num_users <span style="color:#666">=</span> <span style="color:#a2f">len</span>(<span style="color:#a2f">set</span>(n<span style="color:#666">.</span>users))
             <span style="color:#a2f;font-weight:bold">if</span> num_users <span style="color:#666">&gt;</span> <span style="color:#666">1</span> <span style="color:#a2f;font-weight:bold">and</span> <span style="color:#a2f">isinstance</span>(result, TensorBox):
                 <span style="color:#a2f;font-weight:bold">for</span> user <span style="color:#a2f;font-weight:bold">in</span> n<span style="color:#666">.</span>users:
                     <span style="color:#a2f;font-weight:bold">if</span> user<span style="color:#666">.</span>target <span style="color:#a2f;font-weight:bold">in</span> needs_realized_inputs:
-                        <span style="color:#080;font-style:italic"># NOTE. 如果满足条件，最终会调用 realize()</span>
+                        <span style="color:#080;font-style:italic"># NOTE. 如果满足条件，最终会调用 realize()</span>
                         result<span style="color:#666">.</span>realize_hint()
                         <span style="color:#666">...</span>
                         <span style="color:#a2f;font-weight:bold">if</span> user<span style="color:#666">.</span>target <span style="color:#a2f;font-weight:bold">in</span> need_fixed_layout:
                             result <span style="color:#666">=</span> ir<span style="color:#666">.</span>ExternKernel<span style="color:#666">.</span>require_stride_order(
                                 result, ir<span style="color:#666">.</span>get_stride_order(n<span style="color:#666">.</span>meta[<span style="color:#b44">&#34;val&#34;</span>]<span style="color:#666">.</span>stride())
                             )
-                    <span style="color:#080;font-style:italic"># NOTE. 如果当前node结果是output，那么需要实例化。</span>
+                    <span style="color:#080;font-style:italic"># NOTE. 如果当前node结果是output，那么需要实例化。</span>
                     <span style="color:#a2f;font-weight:bold">if</span> user<span style="color:#666">.</span>op <span style="color:#666">==</span> <span style="color:#b44">&#34;output&#34;</span>:
                         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(result<span style="color:#666">.</span>data<span style="color:#666">.</span>data, (Pointwise, Reduction)):
                             result<span style="color:#666">.</span>realize()
                 result<span style="color:#666">.</span>mark_reuse(<span style="color:#a2f">len</span>(n<span style="color:#666">.</span>users))
 
-            <span style="color:#080;font-style:italic"># NOTE. 如果当前node节点read数量大于阈值（典型值=8）则尝试实例化node，防止大量的重复计算。</span>
-            <span style="color:#080;font-style:italic"># Realize if the IRNode already has accumulated lots of reads</span>
+            <span style="color:#080;font-style:italic"># NOTE. 如果当前node节点read数量大于阈值（典型值=8）则尝试实例化node，防止大量的重复计算。</span>
+            <span style="color:#080;font-style:italic"># Realize if the IRNode already has accumulated lots of reads</span>
             <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(result, TensorBox) <span style="color:#a2f;font-weight:bold">and</span> result<span style="color:#666">.</span>has_exceeded_max_reads():
-                <span style="color:#080;font-style:italic"># Prevent excessive accumulation in a computed buffer, when</span>
-                <span style="color:#080;font-style:italic"># there are multiple branches each with small number of memory</span>
-                <span style="color:#080;font-style:italic"># reads, but they converge to a user.</span>
+                <span style="color:#080;font-style:italic"># Prevent excessive accumulation in a computed buffer, when</span>
+                <span style="color:#080;font-style:italic"># there are multiple branches each with small number of memory</span>
+                <span style="color:#080;font-style:italic"># reads, but they converge to a user.</span>
                 result<span style="color:#666">.</span>realize_hint()
         <span style="color:#666">...</span>
         self<span style="color:#666">.</span>register_users_of(result)
@@ -768,15 +768,15 @@
 </li>
 </ul>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">call_function</span>(self, target, args, kwargs):
-        <span style="color:#080;font-style:italic"># NOTE. 处理 getitem，直接走eager的逻辑</span>
+        <span style="color:#080;font-style:italic"># NOTE. 处理 getitem，直接走eager的逻辑</span>
         <span style="color:#a2f;font-weight:bold">if</span> target <span style="color:#a2f;font-weight:bold">is</span> operator<span style="color:#666">.</span>getitem <span style="color:#a2f;font-weight:bold">and</span> <span style="color:#a2f">isinstance</span>(args[<span style="color:#666">0</span>], (<span style="color:#a2f">list</span>, <span style="color:#a2f">tuple</span>)):
             <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#a2f">super</span>()<span style="color:#666">.</span>call_function(target, args, kwargs)
 
         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">hasattr</span>(target, <span style="color:#b44">&#34;_inductor_lowering_function&#34;</span>):
-            <span style="color:#080;font-style:italic"># passthrough lowerings from .pattern_matcher</span>
+            <span style="color:#080;font-style:italic"># passthrough lowerings from .pattern_matcher</span>
             <span style="color:#a2f;font-weight:bold">return</span> target(<span style="color:#666">*</span>args, <span style="color:#666">**</span>kwargs)
 
-        <span style="color:#080;font-style:italic"># NOTE. lowerings中没有注册对应target的lowering实现，如果允许fallback则走eager，否则抛出异常</span>
+        <span style="color:#080;font-style:italic"># NOTE. lowerings中没有注册对应target的lowering实现，如果允许fallback则走eager，否则抛出异常</span>
         <span style="color:#a2f;font-weight:bold">if</span> target <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f;font-weight:bold">in</span> lowerings:
             <span style="color:#666">...</span>
         <span style="color:#a2f;font-weight:bold">try</span>:
@@ -796,11 +796,11 @@
         self<span style="color:#666">.</span>init_wrapper_code()
 
         self<span style="color:#666">.</span>scheduler <span style="color:#666">=</span> Scheduler(self<span style="color:#666">.</span>buffers)
-        <span style="color:#a2f;font-weight:bold">assert</span> self<span style="color:#666">.</span>scheduler <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None  <span style="color:#080;font-style:italic"># mypy can&#39;t figure this out</span>
-        <span style="color:#080;font-style:italic"># NOTE. 生成kernel</span>
+        <span style="color:#a2f;font-weight:bold">assert</span> self<span style="color:#666">.</span>scheduler <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None  <span style="color:#080;font-style:italic"># mypy can&#39;t figure this out</span>
+        <span style="color:#080;font-style:italic"># NOTE. 生成kernel</span>
         self<span style="color:#666">.</span>scheduler<span style="color:#666">.</span>codegen()
         <span style="color:#a2f;font-weight:bold">assert</span> self<span style="color:#666">.</span>wrapper_code <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None
-        <span style="color:#080;font-style:italic"># # NOTE. 生成wrapper</span>
+        <span style="color:#080;font-style:italic"># # NOTE. 生成wrapper</span>
         <span style="color:#a2f;font-weight:bold">return</span> self<span style="color:#666">.</span>wrapper_code<span style="color:#666">.</span>generate()
 </code></pre></div><p>buffers则是lowering的结果（Inductor IR），如下函数forward</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">forward</span>(x, y):
@@ -851,27 +851,27 @@
   origins<span style="color:#666">=</span>{cos, add}
 ))]
 </code></pre></div><p>如果需要<strong>从Inductor接入后端</strong>，需要从_inductor/codegen中注册，参考_inductor/codegen/common.py:</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># The code generated by Inductor consists of two main parts: kernel code and wrapper code.</span>
-<span style="color:#080;font-style:italic"># For any new backend looking to integrate with Inductor, customization of these two main</span>
-<span style="color:#080;font-style:italic"># parts are necessary to generate its specific code.</span>
-<span style="color:#080;font-style:italic">#</span>
-<span style="color:#080;font-style:italic"># Kernel code generation is determined by different Scheduling. Consequently, a new</span>
-<span style="color:#080;font-style:italic"># backend needs to provide a custom Scheduling for its unique kernel code generation. Currently,</span>
-<span style="color:#080;font-style:italic"># CppScheduling and TritonScheduling serve the C++/OpenMP and Triton backends, respectively.</span>
-<span style="color:#080;font-style:italic">#</span>
-<span style="color:#080;font-style:italic"># For the Wrapper, Inductor provides a WrapperCodeGen class to generate the Python wrapper code</span>
-<span style="color:#080;font-style:italic"># that bridges kernels. This allows out-of-tree backends to inherit from WrapperCodeGen,</span>
-<span style="color:#080;font-style:italic"># and override specific member functions to create backend-specific Python wrapper code.</span>
-<span style="color:#080;font-style:italic">#</span>
-<span style="color:#080;font-style:italic"># Other classes, such as CppKernel and TritonKernel, used for code generation, typically form part</span>
-<span style="color:#080;font-style:italic"># of the logic for either Scheduling or WrapperCodeGen. So the Scheduling and WrapperCodeGen interfaces</span>
-<span style="color:#080;font-style:italic"># provide flexibility to the backend. A backend can choose to implement these classes from scratch,</span>
-<span style="color:#080;font-style:italic"># or reuse them by extending and overriding as necessary. And Inductor provides the registration API,</span>
-<span style="color:#080;font-style:italic"># register_backend_for_device, to equip a new backend at runtime.</span>
-<span style="color:#080;font-style:italic">#</span>
-<span style="color:#080;font-style:italic"># Intel has developed a new backend on top of Triton to support Intel GPUs, leveraging these interfaces.</span>
-<span style="color:#080;font-style:italic"># This backend can be used as a reference:</span>
-<span style="color:#080;font-style:italic"># https://github.com/intel/intel-extension-for-pytorch/blob/5dcc9d57e5422cf295e1a1ee97896d6b6a554a85/intel_extension_for_pytorch/_inductor/__init__.py#L9</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># The code generated by Inductor consists of two main parts: kernel code and wrapper code.</span>
+<span style="color:#080;font-style:italic"># For any new backend looking to integrate with Inductor, customization of these two main</span>
+<span style="color:#080;font-style:italic"># parts are necessary to generate its specific code.</span>
+<span style="color:#080;font-style:italic">#</span>
+<span style="color:#080;font-style:italic"># Kernel code generation is determined by different Scheduling. Consequently, a new</span>
+<span style="color:#080;font-style:italic"># backend needs to provide a custom Scheduling for its unique kernel code generation. Currently,</span>
+<span style="color:#080;font-style:italic"># CppScheduling and TritonScheduling serve the C++/OpenMP and Triton backends, respectively.</span>
+<span style="color:#080;font-style:italic">#</span>
+<span style="color:#080;font-style:italic"># For the Wrapper, Inductor provides a WrapperCodeGen class to generate the Python wrapper code</span>
+<span style="color:#080;font-style:italic"># that bridges kernels. This allows out-of-tree backends to inherit from WrapperCodeGen,</span>
+<span style="color:#080;font-style:italic"># and override specific member functions to create backend-specific Python wrapper code.</span>
+<span style="color:#080;font-style:italic">#</span>
+<span style="color:#080;font-style:italic"># Other classes, such as CppKernel and TritonKernel, used for code generation, typically form part</span>
+<span style="color:#080;font-style:italic"># of the logic for either Scheduling or WrapperCodeGen. So the Scheduling and WrapperCodeGen interfaces</span>
+<span style="color:#080;font-style:italic"># provide flexibility to the backend. A backend can choose to implement these classes from scratch,</span>
+<span style="color:#080;font-style:italic"># or reuse them by extending and overriding as necessary. And Inductor provides the registration API,</span>
+<span style="color:#080;font-style:italic"># register_backend_for_device, to equip a new backend at runtime.</span>
+<span style="color:#080;font-style:italic">#</span>
+<span style="color:#080;font-style:italic"># Intel has developed a new backend on top of Triton to support Intel GPUs, leveraging these interfaces.</span>
+<span style="color:#080;font-style:italic"># This backend can be used as a reference:</span>
+<span style="color:#080;font-style:italic"># https://github.com/intel/intel-extension-for-pytorch/blob/5dcc9d57e5422cf295e1a1ee97896d6b6a554a85/intel_extension_for_pytorch/_inductor/__init__.py#L9</span>
 </code></pre></div><h1 id="scheduler">Scheduler</h1>
 <ul>
 <li>
@@ -890,57 +890,57 @@
             <span style="color:#666">*</span>V<span style="color:#666">.</span>graph<span style="color:#666">.</span>constants<span style="color:#666">.</span>keys(),
         }
 
-        <span style="color:#080;font-style:italic"># NOTE. 将 no-op转换为`NopKernelSchedulerNode`，`ExterKernel`转为`ExternKernelSchedulerNode`，`ComputedBuffer`或`TemplateBuffer`转为`SchedulerNode`</span>
+        <span style="color:#080;font-style:italic"># NOTE. 将 no-op转换为`NopKernelSchedulerNode`，`ExterKernel`转为`ExternKernelSchedulerNode`，`ComputedBuffer`或`TemplateBuffer`转为`SchedulerNode`</span>
         self<span style="color:#666">.</span>nodes <span style="color:#666">=</span> [self<span style="color:#666">.</span>create_scheduler_node(n) <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> nodes]
 
-        <span style="color:#080;font-style:italic"># some new constants could have been created above</span>
+        <span style="color:#080;font-style:italic"># some new constants could have been created above</span>
         self<span style="color:#666">.</span>available_buffer_names<span style="color:#666">.</span>update(V<span style="color:#666">.</span>graph<span style="color:#666">.</span>constants<span style="color:#666">.</span>keys())
         <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>nodes:
             node<span style="color:#666">.</span>prune_deps()
 
         self<span style="color:#666">.</span>name_to_node <span style="color:#666">=</span> {n<span style="color:#666">.</span>get_name(): n <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>nodes}
-        self<span style="color:#666">.</span>name_to_fused_node <span style="color:#666">=</span> None  <span style="color:#080;font-style:italic"># set in fuse_nods()</span>
+        self<span style="color:#666">.</span>name_to_fused_node <span style="color:#666">=</span> None  <span style="color:#080;font-style:italic"># set in fuse_nods()</span>
 
-        <span style="color:#080;font-style:italic"># we handle mutation by renaming modified versions of the same</span>
-        <span style="color:#080;font-style:italic"># buffer in the dependency graph to prevent cycles.</span>
-        <span style="color:#080;font-style:italic"># mutation_renames: tracks the current name for a given buffer</span>
-        <span style="color:#080;font-style:italic">#                   (changed once per mutation)</span>
+        <span style="color:#080;font-style:italic"># we handle mutation by renaming modified versions of the same</span>
+        <span style="color:#080;font-style:italic"># buffer in the dependency graph to prevent cycles.</span>
+        <span style="color:#080;font-style:italic"># mutation_renames: tracks the current name for a given buffer</span>
+        <span style="color:#080;font-style:italic">#                   (changed once per mutation)</span>
         self<span style="color:#666">.</span>mutation_real_name <span style="color:#666">=</span> {}
-        <span style="color:#080;font-style:italic"># mutation_real_name: maps back to the original name for codegen</span>
+        <span style="color:#080;font-style:italic"># mutation_real_name: maps back to the original name for codegen</span>
         self<span style="color:#666">.</span>mutation_renames <span style="color:#666">=</span> {}
 
-        <span style="color:#080;font-style:italic"># NOTE. 添加node间依赖边；先进行alias分析，消除alias；处理mutation</span>
+        <span style="color:#080;font-style:italic"># NOTE. 添加node间依赖边；先进行alias分析，消除alias；处理mutation</span>
         self<span style="color:#666">.</span>compute_dependencies()
-        <span style="color:#080;font-style:italic"># NOTE. 后序遍历nodes，得到拓扑序的排序。</span>
+        <span style="color:#080;font-style:italic"># NOTE. 后序遍历nodes，得到拓扑序的排序。</span>
         self<span style="color:#666">.</span>topological_sort_schedule()
-        <span style="color:#080;font-style:italic"># NOTE. 消除没有user的节点</span>
+        <span style="color:#080;font-style:italic"># NOTE. 消除没有user的节点</span>
         self<span style="color:#666">.</span>dead_node_elimination()
-        <span style="color:#080;font-style:italic"># NOTE. 前面已经进行了依赖分析和拓扑排序，递归的统计每个节点的前驱节点，用于后面的fusion等分析。</span>
+        <span style="color:#080;font-style:italic"># NOTE. 前面已经进行了依赖分析和拓扑排序，递归的统计每个节点的前驱节点，用于后面的fusion等分析。</span>
         self<span style="color:#666">.</span>compute_predecessors()
 
         metrics<span style="color:#666">.</span>ir_nodes_pre_fusion <span style="color:#666">+=</span> <span style="color:#a2f">len</span>(self<span style="color:#666">.</span>nodes)
         V<span style="color:#666">.</span>debug<span style="color:#666">.</span>ir_pre_fusion(self<span style="color:#666">.</span>nodes)
         self<span style="color:#666">.</span>num_orig_nodes <span style="color:#666">=</span> <span style="color:#a2f">len</span>(self<span style="color:#666">.</span>nodes)
         self<span style="color:#666">.</span>name_to_fused_node <span style="color:#666">=</span> {n<span style="color:#666">.</span>get_name(): n <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>nodes}
-        <span style="color:#080;font-style:italic"># NOTE. 生成ForeachNodeScheduler, 用于lowering 例如torch._foreach_add op，便于对这类算子的horizontal fusion.</span>
-        <span style="color:#080;font-style:italic"># NOTE. https://docs.google.com/document/d/1JLr5yMAR8TuKW78ixKeqzfDHhcazwxKo_JXQnP_-wyY/edit?kh_source=GDOCS#heading=h.8x4z4mmet3im</span>
+        <span style="color:#080;font-style:italic"># NOTE. 生成ForeachNodeScheduler, 用于lowering 例如torch._foreach_add op，便于对这类算子的horizontal fusion.</span>
+        <span style="color:#080;font-style:italic"># NOTE. https://docs.google.com/document/d/1JLr5yMAR8TuKW78ixKeqzfDHhcazwxKo_JXQnP_-wyY/edit?kh_source=GDOCS#heading=h.8x4z4mmet3im</span>
         self<span style="color:#666">.</span>create_foreach_nodes()
         self<span style="color:#666">.</span>topological_sort_schedule()
-        <span style="color:#080;font-style:italic"># NOTE. 对 ir.Buffer（SchedulerNode） 进行fuse.</span>
+        <span style="color:#080;font-style:italic"># NOTE. 对 ir.Buffer（SchedulerNode） 进行fuse.</span>
         self<span style="color:#666">.</span>fuse_nodes()
-        <span style="color:#080;font-style:italic"># NOTE. 递归的更新 node的last_usage，</span>
+        <span style="color:#080;font-style:italic"># NOTE. 递归的更新 node的last_usage，</span>
         self<span style="color:#666">.</span>compute_last_usage()
         V<span style="color:#666">.</span>debug<span style="color:#666">.</span>ir_post_fusion(self<span style="color:#666">.</span>nodes)
         V<span style="color:#666">.</span>debug<span style="color:#666">.</span>graph_diagram(self<span style="color:#666">.</span>nodes)
         self<span style="color:#666">.</span>debug_draw_graph()
 
-        <span style="color:#080;font-style:italic"># used during codegen:</span>
+        <span style="color:#080;font-style:italic"># used during codegen:</span>
         self<span style="color:#666">.</span>current_device <span style="color:#666">=</span> None
         self<span style="color:#666">.</span>buffer_names_to_free <span style="color:#666">=</span> <span style="color:#a2f">set</span>()
         self<span style="color:#666">.</span>buffer_names_no_longer_needed <span style="color:#666">=</span> <span style="color:#a2f">set</span>()
 
-        <span style="color:#080;font-style:italic"># fx graph node to the position it appears in the graph</span>
-        <span style="color:#080;font-style:italic"># for debug attribution</span>
+        <span style="color:#080;font-style:italic"># fx graph node to the position it appears in the graph</span>
+        <span style="color:#080;font-style:italic"># for debug attribution</span>
         self<span style="color:#666">.</span>origin_to_index <span style="color:#666">=</span> {}
 
         log<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Number of scheduler nodes after fusion </span><span style="color:#b68;font-weight:bold">%d</span><span style="color:#b44">&#34;</span>, <span style="color:#a2f">len</span>(self<span style="color:#666">.</span>nodes))
@@ -960,11 +960,11 @@ TODO more detail</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">    <span style="color:#a2f">@dynamo_timed</span>
     <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">codegen</span>(self):
         <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>nodes:
-            <span style="color:#080;font-style:italic"># NOTE. wrapper_code 相关，TODO</span>
+            <span style="color:#080;font-style:italic"># NOTE. wrapper_code 相关，TODO</span>
             self<span style="color:#666">.</span>enter_context(node)
             self<span style="color:#666">.</span>buffer_names_no_longer_needed<span style="color:#666">.</span>update(node<span style="color:#666">.</span>last_usage)
 
-            <span style="color:#080;font-style:italic"># NOTE. codegen前获取这个node对应的device</span>
+            <span style="color:#080;font-style:italic"># NOTE. codegen前获取这个node对应的device</span>
             <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f">isinstance</span>(node, NopKernelSchedulerNode):
                 device <span style="color:#666">=</span> node<span style="color:#666">.</span>get_device()
                 <span style="color:#a2f;font-weight:bold">if</span> (
@@ -985,11 +985,11 @@ TODO more detail</p>
 
             self<span style="color:#666">.</span>buffer_names_to_free<span style="color:#666">.</span>update(node<span style="color:#666">.</span>last_usage)
 
-            <span style="color:#080;font-style:italic"># NOTE. 根据 node 类型选择对应的codegen实现。</span>
-            <span style="color:#080;font-style:italic"># NOTE. template -&gt; codegen_template</span>
-            <span style="color:#080;font-style:italic"># NOTE. extern   -&gt; codegen_extern_call</span>
-            <span style="color:#080;font-style:italic"># NOTE. foreach  -&gt; codegen_foreach</span>
-            <span style="color:#080;font-style:italic"># NOTE. FusedSchedulerNode, SchedulerNode -&gt; codegen_nodes</span>
+            <span style="color:#080;font-style:italic"># NOTE. 根据 node 类型选择对应的codegen实现。</span>
+            <span style="color:#080;font-style:italic"># NOTE. template -&gt; codegen_template</span>
+            <span style="color:#080;font-style:italic"># NOTE. extern   -&gt; codegen_extern_call</span>
+            <span style="color:#080;font-style:italic"># NOTE. foreach  -&gt; codegen_foreach</span>
+            <span style="color:#080;font-style:italic"># NOTE. FusedSchedulerNode, SchedulerNode -&gt; codegen_nodes</span>
             <span style="color:#a2f;font-weight:bold">if</span> node<span style="color:#666">.</span>is_template():
                 node, <span style="color:#666">*</span>epilogue <span style="color:#666">=</span> node<span style="color:#666">.</span>get_nodes()
                 self<span style="color:#666">.</span>get_backend(device)<span style="color:#666">.</span>codegen_template(node, epilogue)
@@ -1034,7 +1034,7 @@ TODO more detail</p>
             <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> epilogue_nodes:
                 node<span style="color:#666">.</span>codegen(kernel<span style="color:#666">.</span>split_and_set_ranges(node<span style="color:#666">.</span>get_ranges()))
 
-        <span style="color:#080;font-style:italic"># finalize must be called after adding epilogue above</span>
+        <span style="color:#080;font-style:italic"># finalize must be called after adding epilogue above</span>
         src_code <span style="color:#666">=</span> partial_code<span style="color:#666">.</span>finalize()
         node_schedule <span style="color:#666">=</span> [template_node, <span style="color:#666">*</span>epilogue_nodes]
         kernel_name <span style="color:#666">=</span> self<span style="color:#666">.</span>define_kernel(src_code, node_schedule)
@@ -1148,7 +1148,7 @@ TODO more detail</p>
                 )
 
         argdefs, _, signature <span style="color:#666">=</span> self<span style="color:#666">.</span>args<span style="color:#666">.</span>python_argdefs()
-        <span style="color:#080;font-style:italic"># maps actual expression to SizeArg if its in sizevars replacements</span>
+        <span style="color:#080;font-style:italic"># maps actual expression to SizeArg if its in sizevars replacements</span>
         <span style="color:#a2f;font-weight:bold">for</span> i, arg <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">enumerate</span>(signature):
             <span style="color:#a2f;font-weight:bold">if</span> (
                 <span style="color:#a2f">isinstance</span>(arg, SizeArg)
@@ -1189,12 +1189,12 @@ TODO more detail</p>
                     sizearg, size_dtype<span style="color:#666">=</span>self<span style="color:#666">.</span>index_dtype
                 )
                 argdefs<span style="color:#666">.</span>append(f<span style="color:#b44">&#34;{tree.prefix}numel&#34;</span>)
-                <span style="color:#080;font-style:italic"># constexpr version causes issues, see</span>
-                <span style="color:#080;font-style:italic"># https://github.com/pytorch/torchdynamo/pull/1362</span>
-                <span style="color:#080;font-style:italic"># triton_meta[&#34;constants&#34;][len(argdefs)] = V.graph.sizevars.size_hint(</span>
-                <span style="color:#080;font-style:italic">#     tree.numel</span>
-                <span style="color:#080;font-style:italic"># )</span>
-                <span style="color:#080;font-style:italic"># argdefs.append(f&#34;{tree.prefix}numel: tl.constexpr&#34;)</span>
+                <span style="color:#080;font-style:italic"># constexpr version causes issues, see</span>
+                <span style="color:#080;font-style:italic"># https://github.com/pytorch/torchdynamo/pull/1362</span>
+                <span style="color:#080;font-style:italic"># triton_meta[&#34;constants&#34;][len(argdefs)] = V.graph.sizevars.size_hint(</span>
+                <span style="color:#080;font-style:italic">#     tree.numel</span>
+                <span style="color:#080;font-style:italic"># )</span>
+                <span style="color:#080;font-style:italic"># argdefs.append(f&#34;{tree.prefix}numel: tl.constexpr&#34;)</span>
         triton_meta[<span style="color:#b44">&#34;configs&#34;</span>] <span style="color:#666">=</span> [config_of(signature)]
 
         <span style="color:#a2f;font-weight:bold">for</span> tree <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>range_trees:
@@ -1220,7 +1220,7 @@ TODO more detail</p>
         <span style="color:#a2f;font-weight:bold">else</span>:
             tile_hint <span style="color:#666">=</span> <span style="color:#b44">&#34;&#34;</span>
             <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">len</span>(size_hints) <span style="color:#666">==</span> <span style="color:#666">2</span>:
-                <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">len</span>(signature) <span style="color:#666">==</span> <span style="color:#666">4</span>:  <span style="color:#080;font-style:italic"># input, output and 2 args</span>
+                <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">len</span>(signature) <span style="color:#666">==</span> <span style="color:#666">4</span>:  <span style="color:#080;font-style:italic"># input, output and 2 args</span>
                     tile_hint <span style="color:#666">=</span> <span style="color:#b44">&#34;tile_hint=TileHint.SQUARE,&#34;</span>
                 <span style="color:#a2f;font-weight:bold">else</span>:
                     tile_hint <span style="color:#666">=</span> <span style="color:#b44">&#34;tile_hint=TileHint.DEFAULT,&#34;</span>
@@ -1262,7 +1262,7 @@ TODO more detail</p>
         self<span style="color:#666">.</span>recursive_predecessors: Optional[Set[<span style="color:#a2f">str</span>]] <span style="color:#666">=</span> None
         self<span style="color:#666">.</span>min_order: Optional[<span style="color:#a2f">int</span>] <span style="color:#666">=</span> None
         self<span style="color:#666">.</span>max_order: Optional[<span style="color:#a2f">int</span>] <span style="color:#666">=</span> None
-        self<span style="color:#666">.</span>last_usage: Set[<span style="color:#a2f">str</span>] <span style="color:#666">=</span> None  <span style="color:#080;font-style:italic"># buffers that won&#39;t be used after this kernel</span>
+        self<span style="color:#666">.</span>last_usage: Set[<span style="color:#a2f">str</span>] <span style="color:#666">=</span> None  <span style="color:#080;font-style:italic"># buffers that won&#39;t be used after this kernel</span>
         self<span style="color:#666">.</span>written <span style="color:#666">=</span> False
 </code></pre></div><ul>
 <li>
@@ -1284,14 +1284,14 @@ TODO more detail</p>
             <span style="color:#a2f;font-weight:bold">return</span> False
 
         <span style="color:#a2f;font-weight:bold">if</span> read_dep<span style="color:#666">.</span>name <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>scheduler<span style="color:#666">.</span>name_to_node:
-            <span style="color:#080;font-style:italic"># don&#39;t allow reuse of an &#39;input&#39; buffer, we don&#39;t own it</span>
-            <span style="color:#080;font-style:italic"># (would this have been fixed if I tracked mutations properly above?)</span>
+            <span style="color:#080;font-style:italic"># don&#39;t allow reuse of an &#39;input&#39; buffer, we don&#39;t own it</span>
+            <span style="color:#080;font-style:italic"># (would this have been fixed if I tracked mutations properly above?)</span>
             <span style="color:#a2f;font-weight:bold">return</span> False
 
         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f">isinstance</span>(
             self<span style="color:#666">.</span>node, (torch<span style="color:#666">.</span>_inductor<span style="color:#666">.</span>ir<span style="color:#666">.</span>AllReduce, torch<span style="color:#666">.</span>_inductor<span style="color:#666">.</span>ir<span style="color:#666">.</span>InPlaceHint)
         ):
-            <span style="color:#080;font-style:italic"># TODO make this a property of the IR</span>
+            <span style="color:#080;font-style:italic"># TODO make this a property of the IR</span>
             <span style="color:#a2f;font-weight:bold">return</span> False
 
         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">len</span>(self<span style="color:#666">.</span>read_writes<span style="color:#666">.</span>writes) <span style="color:#666">==</span> <span style="color:#666">1</span>:
@@ -1480,7 +1480,7 @@ TODO more detail</p>
         result <span style="color:#666">=</span> Reduction<span style="color:#666">.</span>create(reduction_type<span style="color:#666">=</span>reduction_type, <span style="color:#666">**</span>kwargs)
         <span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">isinstance</span>(
             result<span style="color:#666">.</span>data<span style="color:#666">.</span>data, Reduction
-        ):  <span style="color:#080;font-style:italic"># Only realize if reduction isn&#39;t unrolled</span>
+        ):  <span style="color:#080;font-style:italic"># Only realize if reduction isn&#39;t unrolled</span>
             result<span style="color:#666">.</span>realize()
         <span style="color:#a2f;font-weight:bold">return</span> result
 

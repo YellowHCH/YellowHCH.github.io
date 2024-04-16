@@ -1,0 +1,2247 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>Step into ByteIR | ch_huang</title>
+
+    <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">    
+<meta name="viewport" content="width=device-width,minimum-scale=1">
+<meta name="description" content="Draft Notes for byteir code review [TOC] Frontend Byteir支持三种前端输入，分别是onnx，tf，torch，最终收敛到stablehlo dialect。 frontends/ ├── README.md ├──">
+<meta name="generator" content="Hugo 0.68.3" />
+
+
+  <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+
+<link rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon" />
+
+
+
+
+  
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.css" integrity="sha384-RZU/ijkSsFbcmivfdRBQDtwuwVqK7GMOw6IMvKyeWL2K5UAlyp6WonmB8m7Jd0Hn" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/katex.min.js" integrity="sha384-pK1WpvzWVBQiP0/GjnvRxV4mOb0oxFuyRxJlk6vVw146n3egcN5C925NCP7a7BY8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.13/dist/contrib/auto-render.min.js" integrity="sha384-vZTG03m+2yp6N6BNi5iM4rW4oIwk5DfcNdFfxkk9ZWpDriOkXX8voJBFrAO7MpVl" crossorigin="anonymous"
+    onload="renderMathInElement(document.body);"></script>
+
+
+
+
+
+  </head>
+
+  <body>
+    <nav class="navigation">
+	
+		<a href="/"> <span class="arrow">←</span>Home</a>
+	
+	<a href="/posts">Archive</a>
+	<a href="/tags">Tags</a>
+	<a href="/about">About</a>
+
+	
+
+	
+</nav>
+
+
+    <main class="main">
+      
+
+<section id="single">
+    <h1 class="title">Step into ByteIR</h1>
+
+    <div class="tip">
+        <time datetime="2024-03-23 00:00:00 &#43;0000 UTC">Mar 23, 2024</time>
+        
+        <span class="split">
+          ·
+        </span>
+        <span>
+          22 minute read
+        </span>
+    </div>
+
+    
+    
+        
+  
+    <aside class="toc">
+      <details>
+          <summary>Table of Contents
+          </summary>
+          <div>
+              <nav id="TableOfContents">
+  <ul>
+    <li><a href="#onnxtf-frontend"><code>onnx</code>/<code>tf</code>-<code>frontend</code></a></li>
+    <li><a href="#torch-frontend"><code>torch-frontend</code></a>
+      <ul>
+        <li><a href="#python-level-pipeline">Python level pipeline</a></li>
+        <li><a href="#c-level-core-passes-implementation">C++ level core passes implementation</a></li>
+      </ul>
+    </li>
+  </ul>
+
+  <ul>
+    <li><a href="#dialect-extension">Dialect extension</a>
+      <ul>
+        <li><a href="#ace">Ace</a></li>
+        <li><a href="#ccl">Ccl</a></li>
+        <li><a href="#cat">Cat</a></li>
+        <li><a href="#lace">Lace</a></li>
+        <li><a href="#byre">Byre</a></li>
+        <li><a href="#transforms-ext">Transforms ext</a></li>
+      </ul>
+    </li>
+    <li><a href="#compilation-workflow">compilation workflow</a>
+      <ul>
+        <li><a href="#compile_cuda"><code>compile_cuda</code></a></li>
+        <li><a href="#compile_cuda_with_ait"><code>compile_cuda_with_ait</code></a></li>
+        <li><a href="#pipeline-analysis">pipeline analysis</a></li>
+      </ul>
+    </li>
+  </ul>
+
+  <ul>
+    <li><a href="#runtime-python-interface">runtime python interface</a></li>
+  </ul>
+</nav>
+          </div>
+      </details>
+    </aside>
+  
+
+
+    
+
+
+    <div class="content">
+      <p><em>Draft</em></p>
+<p><em>Notes for byteir code review</em></p>
+<p><p class="markdown-image">
+  <img src="/images/step-into-byteir-workflow.PNG" alt="byteir workflow"  />
+</p></p>
+<p>[TOC]</p>
+<h1 id="frontend">Frontend</h1>
+<p>Byteir支持三种前端输入，分别是<code>onnx</code>，<code>tf</code>，<code>torch</code>，最终收敛到<code>stablehlo dialect</code>。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">frontends/
+├── README.md
+├── onnx-frontend
+├── tf-frontend
+└── torch-frontend
+</code></pre></div><h2 id="onnxtf-frontend"><code>onnx</code>/<code>tf</code>-<code>frontend</code></h2>
+<details><summary>onnx-tf-frontend</summary>
+<p>其中<code>onnx</code>前端bridge基于开源的<a href="https://github.com/onnx/onnx-mlir" target="_blank" rel="noopener">onnx-mlir</a>实现，<code>onnx-mlir</code>支持从<code>onnx</code>到<code>tosa</code>或者<code>stablehlo</code>的转换。byteir在前端bridge的实现上，尽量将基础功能同步在upstream中，本地逻辑更多是组织pipeline进行不同前端的转换。
+<code>onnx-frontend</code>的实现结构如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">frontends/onnx-frontend/onnx-frontend/src/
+├── CMakeLists.txt
+├── Compiler
+├── Conversion
+├── Support
+├── onnx-frontend-opt.cpp
+└── onnx-frontend.cpp
+</code></pre></div><p>实现了离线的编译工具以及opt工具。<code>Compiler</code>路径下主要是封装了<em>onnx to hlo</em>的pipeline，用于给pass manager添加用于conversion的passes。在<code>onnx-mlir</code> namespace下的是upstream中的pass，<code>onnx-frontend</code>namespace下的则是byteir本地实现的pass。</p>
+<p><em>byteir/frontends/onnx-frontend/onnx-frontend/src/Compiler/OFCompilerPipelines.cpp</em>:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">addCustomizedONNXToStablehloPasses</span>(
+    mlir<span style="color:#666">::</span>PassManager <span style="color:#666">&amp;</span>pm, <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>vector<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> <span style="color:#666">&amp;</span>customCallOps,
+    <span style="color:#0b0;font-weight:bold">bool</span> enableUnroll) {
+
+  <span style="color:#080;font-style:italic">// Statically add passes for shape inference
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> onnx_frontend<span style="color:#666">::</span>ofRepeatStatic; i<span style="color:#666">++</span>) {
+    pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+    pm.addPass(onnx_frontend<span style="color:#666">::</span>createOFCanonicalizerPass());
+    pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        onnx_mlir<span style="color:#666">::</span>createConstPropONNXToONNXPass());
+  }
+  pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+
+  <span style="color:#080;font-style:italic">// convert coarse-grained onnx ops to byteir.xxx custom calls
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> <span style="color:#666">2</span>; i<span style="color:#666">++</span>) {
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        onnx_frontend<span style="color:#666">::</span>createOFRewriteCustomOnnxOpsPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        onnx_frontend<span style="color:#666">::</span>createOFRewriteToCustomCallPass(customCallOps));
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        onnx_mlir<span style="color:#666">::</span>createDecomposeONNXToONNXPass(<span style="color:#b44">&#34;stablehlo&#34;</span>));
+    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> onnx_frontend<span style="color:#666">::</span>ofRepeatStatic; i<span style="color:#666">++</span>) {
+      pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+      pm.addPass(onnx_frontend<span style="color:#666">::</span>createOFCanonicalizerPass());
+      pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          onnx_mlir<span style="color:#666">::</span>createConstPropONNXToONNXPass());
+    }
+  }
+
+  <span style="color:#080;font-style:italic">// There are more opportunities for const propagation once all tensors have
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// inferred shapes.
+</span><span style="color:#080;font-style:italic"></span>  pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+      onnx_mlir<span style="color:#666">::</span>createConstPropONNXToONNXPass());
+
+  <span style="color:#a2f;font-weight:bold">if</span> (onnx_frontend<span style="color:#666">::</span>ofRepeatDynamicMax <span style="color:#666">&gt;</span> <span style="color:#666">0</span>) {
+    <span style="color:#080;font-style:italic">// Dynamic iterate in ONNXOpTransformPass
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(onnx_mlir<span style="color:#666">::</span>createONNXOpTransformPass(
+        onnx_frontend<span style="color:#666">::</span>ofRepeatStatic, <span style="color:#080;font-style:italic">/*report=*/</span><span style="color:#a2f">false</span>, <span style="color:#a2f">false</span>, <span style="color:#a2f">false</span>, <span style="color:#a2f">true</span>,
+        <span style="color:#a2f">false</span>));
+  } <span style="color:#a2f;font-weight:bold">else</span> {
+    <span style="color:#080;font-style:italic">// Statically add extra passes
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> onnx_frontend<span style="color:#666">::</span>ofRepeatStatic; i<span style="color:#666">++</span>) {
+      pm.addPass(onnx_frontend<span style="color:#666">::</span>createOFCanonicalizerPass());
+      pm.addPass(onnx_mlir<span style="color:#666">::</span>createShapeInferencePass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          onnx_mlir<span style="color:#666">::</span>createConstPropONNXToONNXPass());
+    }
+  }
+
+  pm.addPass(onnx_mlir<span style="color:#666">::</span>createStandardFuncReturnPass());
+  <span style="color:#080;font-style:italic">// Clean dead code.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(mlir<span style="color:#666">::</span>createSymbolDCEPass());
+
+  pm.addPass(onnx_frontend<span style="color:#666">::</span>createOFModifyEntryPointPass());
+  pm.addPass(onnx_mlir<span style="color:#666">::</span>createLowerToStablehloPass(enableUnroll));
+  pm.addPass(onnx_frontend<span style="color:#666">::</span>createOFCanonicalizerPass());
+  (<span style="color:#0b0;font-weight:bold">void</span>)mlir<span style="color:#666">::</span>applyPassManagerCLOptions(pm);
+  mlir<span style="color:#666">::</span>applyDefaultTimingPassManagerCLOptions(pm);
+}
+</code></pre></div><p>整个pipeline包含几个stage：</p>
+<ul>
+<li>infer shape. 重复添加（默认70次）shape inference pass</li>
+<li>将大粒度算子转换到<code>hlo</code>的custom call. byteir对stablehlo的扩展是通过 <a href="https://byteir.ai/docs/tutorials/basic/byteir_mhlo_custom_call/#implementation-of-reusing-mhlo-custom-call" target="_blank" rel="noopener">custom call 机制</a>实现的，如扩展 softmax等。前端表达应该最大力度控制ops set的发散，还是允许扩展重要的大粒度op？大部分人选择了后者，这对编译优化提供了方便。当然也有人寄希望于在中后端compiler中搞定所有的事。</li>
+<li>常量折叠、推导. 主要尝试用<code>createONNXOpTransformPass</code>在onnx graph level做点优化。这个pass的逻辑主要是在做Decompose，Recompose，shape infer，const prop等。</li>
+<li>函数返回值类型推导.</li>
+<li>onnx to hlo.</li>
+</ul>
+<p><code>Conversion</code>路径下则是本地<code>onnx_frontend</code>实现的转换pass，主要就是custom call ops的转换。</p>
+<p><code>tf</code> bridge是基于tensorflow实现的，所以用了bazel去编译。之前项目中用tf提供的API搭过类似的bridge，tf内部支持转到tosa或者mhlo。调用<code>tensorflow::ConvertSavedModelToMlir</code>将saved model（GraphDef）转换到mlir moduleOp，然后执行lowering的pipeline将tf graphdef转换到tosa/hlo，如下是转换到tosa的pipeline：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">buildTFImportPassPipeline</span>(OpPassManager <span style="color:#666">&amp;</span>pm) {
+  <span style="color:#080;font-style:italic">// TF standard pipeline
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createSymbolDCEPass());
+  pm.addPass(tf_executor<span style="color:#666">::</span>CreateTFExecutorGraphPruningPass());
+  pm.addPass(TF<span style="color:#666">::</span>CreateGuaranteeAllFuncsOneUsePass());
+  TF<span style="color:#666">::</span>CreateTFStandardPipeline(pm, TF<span style="color:#666">::</span>StandardPipelineOptions());
+  pm.addPass(TF<span style="color:#666">::</span>CreateDeviceIndexSelectorPass());
+  pm.addPass(createInlinerPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(TFDevice<span style="color:#666">::</span>CreateDecomposeResourceOpsPass());
+  pm.addPass(TF<span style="color:#666">::</span>CreateTFShapeInferencePass());
+
+  <span style="color:#080;font-style:italic">// Lower control flow to CFG
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(TF<span style="color:#666">::</span>CreateTFFunctionalControlFlowToCFG());
+  pm.addPass(createInlinerPass());
+  pm.addPass(createSymbolDCEPass());
+  pm.addPass(createCanonicalizerPass());
+
+  <span style="color:#080;font-style:italic">// Legalize to TOSA
+</span><span style="color:#080;font-style:italic"></span>  tosa<span style="color:#666">::</span>TOSATFLegalizationPipelineOptions tosaOptions;
+  tosa<span style="color:#666">::</span>createTFtoTOSALegalizationPipeline(pm, tosaOptions);
+
+  pm.addPass(createInlinerPass());
+  <span style="color:#080;font-style:italic">// after shape infer pass applied
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// pm.addNestedPass&lt;FuncOp&gt;(compiler::createLoweringToLibraryCallPass());
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createVerifyFullyConvertedPass());
+}
+</code></pre></div><p>而byteir则是调用<code>tensorflow::GraphdefToMlirTranslateFunction</code>将GrapgDef翻译到mlir module，然后调用<code>mlir::tfext::createCustomizedTfToMhloPipelinePass</code> lower到mhlo以及custom call。<code>CustomizedTfToMhloPipelinePass</code>：</p>
+<details><summary>tf to mhlo pipeline</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">  <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">runOnOperation</span>() <span style="color:#a2f;font-weight:bold">override</span> {
+    <span style="color:#a2f;font-weight:bold">auto</span> m <span style="color:#666">=</span> getOperation();
+    PassManager pm(m<span style="color:#666">-&gt;</span>getContext());
+
+    pm.addPass(mlir<span style="color:#666">::</span>createSymbolDCEPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createSCCPPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+
+    <span style="color:#080;font-style:italic">// prun useless tf node
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tf_executor<span style="color:#666">::</span>CreateTFExecutorGraphPruningPass());
+    <span style="color:#a2f;font-weight:bold">if</span> (removeControlFlow) {
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createTFSwitchMergeToIfPass());
+    }
+    <span style="color:#080;font-style:italic">// prun useless tf node
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tf_executor<span style="color:#666">::</span>CreateTFExecutorGraphPruningPass());
+
+    pm.addPass(mlir<span style="color:#666">::</span>createInlinerPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateDropWhileShapeInvariantPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+    <span style="color:#080;font-style:italic">// The SCCP pass performs constant propagation across the IR, which, for
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// example, propagates constant arguments into callee functions.
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// TOOD(hinsu): Investigate if we really need SCCP pass before shape
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// inference and can do with just one pass after the shape inference.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>createSCCPPass());
+    <span style="color:#080;font-style:italic">// Guarantee all functions have one use, which enables shape inference.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateGuaranteeAllFuncsOneUsePass());
+    <span style="color:#080;font-style:italic">// Run shape inference pass before tensorlist decomposition to get buffer
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// shape of uninitialized TensorLists.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTFShapeInferencePass());
+
+    <span style="color:#080;font-style:italic">// Run SCCP pass again as the availability of shapes may open up new
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// opportunities for constant propagation. Note that the shape inference
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// pass doesn&#39;t materialize new constants even if those are computed
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// internally for the purpose of shape inference. These constants might be
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// required by the legalization passes.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>createSCCPPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTensorListOpsDecompositionPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateStackOpsDecompositionPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTensorArrayOpsDecompositionPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>TFDevice<span style="color:#666">::</span>CreateDecomposeResourceOpsPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreatePromoteResourcesToArgsPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createSymbolDCEPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTFShapeInferencePass());
+    <span style="color:#080;font-style:italic">//// TODO(b/171426148): We cannot completely remove region to functional
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//// control flow conversion from this pipeline yet as it causes some unit
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//// tests to fail.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTFRegionControlFlowToFunctional());
+    <span style="color:#080;font-style:italic">//  LegalizeTFControlFlow encapsulates arguments for control flow operations
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//  with a tuple argument which break the assumption of resource lifting
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//  inside PromoteResourcesToArgs.
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>CreateExecutorDialectToFunctionalConversionPass());
+    <span style="color:#a2f;font-weight:bold">if</span> (staticalizeDynamicShape) {
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createProcessDynamicStitchAsStaticPass());
+    }
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createReshapeMovedownStringPass());
+
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createConstantFoldingPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createCSEPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTFShapeInferencePass());
+
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateLowerQuantizedPass());
+
+    <span style="color:#080;font-style:italic">// fuse dilated conv
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>TFL<span style="color:#666">::</span>CreateIdentifyDilatedConvPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createFuseTFOpsPass());
+
+    pm.addPass(mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createRewriteToCustomCallOpsPass(customCallOps));
+
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#a2f;font-weight:bold">this</span><span style="color:#666">-&gt;</span>stopAfterRewriteCustomCall) {
+      <span style="color:#a2f;font-weight:bold">if</span> (mlir<span style="color:#666">::</span>failed(runPipeline(pm, m))) {
+        signalPassFailure();
+      }
+      <span style="color:#a2f;font-weight:bold">return</span>;
+    }
+
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createMhloLegalizeTfExtPass());
+    pm.addPass(mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>createLegalizeTFPass(
+        <span style="color:#080;font-style:italic">/*legalize_chlo=*/</span><span style="color:#a2f">true</span>,
+        <span style="color:#080;font-style:italic">/*tf2xla_fallback_device_type=*/</span>std<span style="color:#666">::</span>nullopt, <span style="color:#a2f">false</span>));
+    pm.addPass(mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>CreateLegalizeTFCommunicationPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+
+    <span style="color:#080;font-style:italic">// Run shape inference pass to propagate shapes through tensor_cast
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// operations from static to dynamic shapes. This could be generated if the
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// shape inference was originally missing in a TF op but the corresponding
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// HLO op had static shape after lowering.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>TF<span style="color:#666">::</span>CreateTFShapeInferencePass());
+    <span style="color:#080;font-style:italic">// Run LegalizeTFPass again because the previous legalization passes can
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// expose more graph pruning and canonicalization opportunities that are
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// necessary for the second LegalizeTFPass(allow_partial_conversion=false)
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// invocation.
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createRewriteToCustomCallOpsPass(customCallOps));
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createMhloLegalizeTfExtPass());
+    pm.addPass(mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>createLegalizeTFPass(
+        <span style="color:#080;font-style:italic">/*legalize_chlo=*/</span><span style="color:#a2f">true</span>,
+        <span style="color:#080;font-style:italic">/*tf2xla_fallback_device_type=*/</span>std<span style="color:#666">::</span>nullopt, <span style="color:#a2f">false</span>));
+
+    <span style="color:#080;font-style:italic">// if (CanInlineFunctionsPostLegalization(device_type))
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   pm.addPass(mlir::createInlinerPass());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// In order to export to XLA, we must sink constants to control flow
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// regions, since XLA uses functional control flow.
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>createSinkConstantsToControlFlowPass());
+
+    pm.addPass(mlir<span style="color:#666">::</span>createSymbolDCEPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createCSEPass());
+
+    <span style="color:#080;font-style:italic">// Sparse Conditional Constant Propagation
+</span><span style="color:#080;font-style:italic"></span>    pm.addPass(mlir<span style="color:#666">::</span>createSCCPPass());
+    pm.addPass(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+
+    pm.addPass(mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createRewriteToCustomCallOpsPass(customCallOps));
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createMhloLegalizeTfExtPass());
+    pm.addPass(mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>createLegalizeTFPass(
+        <span style="color:#080;font-style:italic">/*legalize_chlo=*/</span><span style="color:#a2f">true</span>,
+        <span style="color:#080;font-style:italic">/*tf2xla_fallback_device_type=*/</span>std<span style="color:#666">::</span>nullopt, <span style="color:#a2f">false</span>));
+
+    pm.addPass(mlir<span style="color:#666">::</span>createInlinerPass());
+
+    <span style="color:#080;font-style:italic">// Fallback pass to lower all ops that are not legalized to mhlo
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// to mhlo::custom_call or ace::custom_call, this pass must be after all
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// LegalizeTFPass
+</span><span style="color:#080;font-style:italic"></span>    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createTfFallbackToCustomCallPass());
+
+    pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createRewriteFuncAttrToByteIRPass(
+            additional_main_func_attrs));
+
+    <span style="color:#a2f;font-weight:bold">if</span> (setAssumingToBeTrue) {
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          mlir<span style="color:#666">::</span>createRemoveShapeConstraintsPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          mlir<span style="color:#666">::</span>tfext<span style="color:#666">::</span>createRemoveCstrReshapablePass());
+    }
+    pm.addPass(mlir<span style="color:#666">::</span>createCanonicalizerPass());
+
+    pm.addPass(mlir<span style="color:#666">::</span>mhlo<span style="color:#666">::</span>createHloLegalizeToStablehloPass());
+
+    <span style="color:#a2f;font-weight:bold">if</span> (mlir<span style="color:#666">::</span>failed(runPipeline(pm, m))) {
+      signalPassFailure();
+    }
+  }
+</code></pre></div></details>
+</details>
+<h2 id="torch-frontend"><code>torch-frontend</code></h2>
+<details><summary>torch-frontend</summary>
+<p>代码结构如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">frontends/torch-frontend/torch-frontend/
+├── CMakeLists.txt
+├── include
+│   ├── torch-frontend
+│   └── torch-frontend-c
+├── lib
+│   ├── CAPI
+│   ├── CMakeLists.txt
+│   ├── Conversion
+│   ├── CustomOp
+│   ├── Pipelines
+│   ├── Transforms
+│   └── Utils
+├── python
+│   ├── CMakeLists.txt
+│   ├── csrc
+│   ├── gen_version.py
+│   ├── setup.py
+│   ├── <span style="color:#a2f">test</span>
+│   ├── torch_frontend
+│   └── version.txt
+└── tools
+    ├── CMakeLists.txt
+    └── torch-frontend-opt.cpp
+</code></pre></div><p>核心的pass是放在<code>torch-mlir</code>中实现的，少量pass在byteir本地实现，如<code>Conversion</code>和<code>Transforms</code>路径下的pass。记得早先在项目中支持<code>torch-mlir</code>时并没有torch to mhlo的路线，只有tosa和linalg，后面byteir团队对这条路线做了工作。不同于tf，<code>torch-frontend</code> 最外层的 interface 是用 python 写的，和<code>torch-mlir</code>对外提供的接口相似。<code>torch-mlir</code> translate的路线是 torchscript ir到 torch dialect，然后分发到 <code>tosa/mhlo/linalg</code> 等 dialect。其中 torchscript 需要先经过 functionalization，然后translate到 <code>torch dialect</code>。但是对于 dynamo 抓到的 subgraph（fx graph），是已经 functionalize 过的，所以可以直接translate到 <code>torch dialect</code>。在早先的项目中，尝试的方案是先将 <code>fx graph</code> 序列化到类似GraphDef的表达（pytorch社区有人问过fx graph是否有C++的实现，这应该是对该问题一种实践），然后在C++中使用 MLIR 的 <code>OpBuilder</code> 进行GraphDef到 torch dialect的翻译。当然，byteir是将这个过程放在python上下文中完成的。</p>
+<details><summary>fx graph 序列化</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">syntax <span style="color:#666">=</span> <span style="color:#b44">&#34;proto2&#34;</span>;
+
+package fx_graph_cpp;
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    TODO Support more torch data type as needed.
+</span><span style="color:#080;font-style:italic">**    Ref(https://pytorch.org/docs/stable/tensors.html)
+</span><span style="color:#080;font-style:italic">*/</span>
+<span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">TorchDataType</span> {
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    32-bit float
+</span><span style="color:#080;font-style:italic">  */</span>
+  FLOAT   <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  FLOAT32 <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    64-bit float
+</span><span style="color:#080;font-style:italic">  */</span>
+  FLOAT64 <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  DOUBLE  <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    32-bit int
+</span><span style="color:#080;font-style:italic">  */</span>
+  INT     <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  INT32   <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    64-bit int
+</span><span style="color:#080;font-style:italic">  */</span>
+  INT64   <span style="color:#666">=</span> <span style="color:#666">6</span>;
+  LONG    <span style="color:#666">=</span> <span style="color:#666">7</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    Bool
+</span><span style="color:#080;font-style:italic">  */</span>
+  BOOL    <span style="color:#666">=</span> <span style="color:#666">8</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    16-bit float
+</span><span style="color:#080;font-style:italic">  */</span>
+  FLOAT16 <span style="color:#666">=</span> <span style="color:#666">9</span>;
+  UINT8 <span style="color:#666">=</span> <span style="color:#666">10</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    Ref(https://pytorch.org/docs/stable/tensor_attributes.html)
+</span><span style="color:#080;font-style:italic">*/</span>
+<span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">TorchDataFormat</span> {
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    Default to NCHW/NCDHW
+</span><span style="color:#080;font-style:italic">  */</span>
+  CONTIGUOUS_FORMAT <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    NHWC
+</span><span style="color:#080;font-style:italic">  */</span>
+  CHANNELS_LAST     <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    NDHWC
+</span><span style="color:#080;font-style:italic">  */</span>
+  CHANNELS_LAST_3D  <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    TODO
+</span><span style="color:#080;font-style:italic">  */</span>
+  PRESERVE_FORMAT   <span style="color:#666">=</span> <span style="color:#666">4</span>;
+}
+
+<span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">FxConstantType</span> {
+  CONST_SCALAR <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  CONST_LIST   <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  CONST_TENSOR <span style="color:#666">=</span> <span style="color:#666">2</span>;
+}
+
+message Device {
+  <span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">DeviceType</span> {
+    UNKNOWN                       <span style="color:#666">=</span> <span style="color:#666">0</span>;
+    CPU                           <span style="color:#666">=</span> <span style="color:#666">1</span>;
+    CUDA                          <span style="color:#666">=</span> <span style="color:#666">2</span>;
+    MUSA                          <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  }
+  optional DeviceType device_type <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  optional int32 device_id        <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  optional string device_name     <span style="color:#666">=</span> <span style="color:#666">3</span>;
+}
+
+message FakeTensor {
+  optional Device device       <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  repeated int32 shape         <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  optional TorchDataType dtype <span style="color:#666">=</span> <span style="color:#666">3</span>;
+}
+
+message TensorMetadata {
+  repeated int32 shape                   <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  repeated int32 stride                  <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  optional TorchDataType dtype           <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  optional <span style="color:#0b0;font-weight:bold">bool</span> requires_grad            <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  optional <span style="color:#0b0;font-weight:bold">bool</span> is_quantized             <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  optional TorchDataFormat memory_format <span style="color:#666">=</span> <span style="color:#666">6</span>;
+}
+
+message NodeMeta {
+  optional string stack_trace         <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  optional string source_fn           <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  optional string nn_module_stack     <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  repeated FakeTensor val             <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  optional TensorMetadata tensor_meta <span style="color:#666">=</span> <span style="color:#666">5</span>;
+}
+
+<span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">OpCodeTy</span> {
+  PLACEHOLDER     <span style="color:#666">=</span> <span style="color:#666">0</span>;
+  GETATTR         <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  CALLFUNCTION    <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  CALLMODULE      <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  CALLMETHON      <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  OUTPUT          <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  CONSTANT        <span style="color:#666">=</span> <span style="color:#666">6</span>;
+  LIST            <span style="color:#666">=</span> <span style="color:#666">7</span>;
+  CONSTANT_TENSOR <span style="color:#666">=</span> <span style="color:#666">8</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``placeholder`` represents a function input. The ``name`` attribute specifies
+</span><span style="color:#080;font-style:italic">**    the name this value will take on. ``target`` is similarly the name of the
+</span><span style="color:#080;font-style:italic">**    argument. ``args`` holds either: 1) nothing, or 2) a single argument denoting
+</span><span style="color:#080;font-style:italic">**    the default parameter of the function input. ``kwargs`` is don&#39;t-care.
+</span><span style="color:#080;font-style:italic">**    Placeholders correspond to the function parameters (e.g. ``x``) in the graph
+</span><span style="color:#080;font-style:italic">**    printout.
+</span><span style="color:#080;font-style:italic">**    ``PlaceHolderNode``. ``args`` are names of ConstantNode
+</span><span style="color:#080;font-style:italic">*/</span>
+message PlaceHolderNode {
+  required OpCodeTy opcode <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name     <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target   <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  repeated string users    <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  optional NodeMeta meta   <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  optional string args     <span style="color:#666">=</span> <span style="color:#666">6</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``get_attr`` retrieves a parameter from the module hierarchy. ``name`` is
+</span><span style="color:#080;font-style:italic">**    similarly the name the result of the fetch is assigned to. ``target`` is the
+</span><span style="color:#080;font-style:italic">**    fully-qualified name of the parameter&#39;s position in the module hierarchy.
+</span><span style="color:#080;font-style:italic">**    ``args`` and ``kwargs`` are don&#39;t-care
+</span><span style="color:#080;font-style:italic">**    TODO
+</span><span style="color:#080;font-style:italic">*/</span>
+message GetAttrNode {
+  required OpCodeTy opcode          <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name              <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target            <span style="color:#666">=</span> <span style="color:#666">3</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``call_function`` applies a free function to some values. ``name`` is similarly the
+</span><span style="color:#080;font-style:italic">**    name of the value to assign to. ``target`` is the function to be applied. ``args``
+</span><span style="color:#080;font-style:italic">**    and ``kwargs`` represent the arguments to the function, following the Python calling
+</span><span style="color:#080;font-style:italic">**    convention
+</span><span style="color:#080;font-style:italic">**    ``CallFunctionNode``. ``inputs``, ``args``, ``users`` are names of nodes. ``args``
+</span><span style="color:#080;font-style:italic">**    contanis ``inputs`` and ``constants``
+</span><span style="color:#080;font-style:italic">*/</span>
+message CallFunctionNode {
+  required OpCodeTy opcode   <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name       <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target     <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  repeated string inputs     <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  repeated string args       <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  map<span style="color:#666">&lt;</span>string, string<span style="color:#666">&gt;</span> kwargs <span style="color:#666">=</span> <span style="color:#666">6</span>;
+  repeated string users      <span style="color:#666">=</span> <span style="color:#666">7</span>;
+  optional NodeMeta meta     <span style="color:#666">=</span> <span style="color:#666">8</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``call_module`` applies a module in the module hierarchy&#39;s ``forward()``
+</span><span style="color:#080;font-style:italic">**    method to given arguments. ``name`` is as previous. ``target`` is the
+</span><span style="color:#080;font-style:italic">**    fully-qualified name of the module in the module hierarchy to call. ``args``
+</span><span style="color:#080;font-style:italic">**    and ``kwargs`` represent the arguments to invoke the module on, excluding
+</span><span style="color:#080;font-style:italic">**    the self argument.
+</span><span style="color:#080;font-style:italic">**    TODO
+</span><span style="color:#080;font-style:italic">*/</span>
+message CallModuleNode {
+  required OpCodeTy opcode <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name     <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target   <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    optional Node = args = 4;
+</span><span style="color:#080;font-style:italic">  */</span>
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``call_method`` calls a method on a value. ``name`` is as similar. ``target``
+</span><span style="color:#080;font-style:italic">**    is the string name of the method to apply to the ``self`` argument. ``args``
+</span><span style="color:#080;font-style:italic">**    and ``kwargs`` represent the arguments to invoke the module on, including
+</span><span style="color:#080;font-style:italic">**    the self argument
+</span><span style="color:#080;font-style:italic">**    TODO
+</span><span style="color:#080;font-style:italic">*/</span>
+message CallMethodNode {
+  required OpCodeTy opcode <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name     <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target   <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    optional Node = args = 4;
+</span><span style="color:#080;font-style:italic">  */</span>
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``output`` contains the output of the traced function in its ``args[0]``
+</span><span style="color:#080;font-style:italic">**    attribute. This corresponds to the &#34;return&#34; statement in the Graph printout.
+</span><span style="color:#080;font-style:italic">**    ``OutputNode``. ``outputs`` is names list of output nodes.
+</span><span style="color:#080;font-style:italic">*/</span>
+message OutputNode {
+  required OpCodeTy opcode <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name     <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required string target   <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  repeated string outputs  <span style="color:#666">=</span> <span style="color:#666">4</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``constant`` contains constant as args.
+</span><span style="color:#080;font-style:italic">*/</span>
+message ConstantNode {
+  required OpCodeTy opcode      <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name          <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  <span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">  **    Store all const val as double.
+</span><span style="color:#080;font-style:italic">  */</span>
+  repeated <span style="color:#0b0;font-weight:bold">double</span> values        <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  required TorchDataType dtype  <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  required FxConstantType ctype <span style="color:#666">=</span> <span style="color:#666">5</span>;
+}
+
+<span style="color:#080;font-style:italic">/*
+</span><span style="color:#080;font-style:italic">**    ``list`` contains list of nodes as a arg. ``name`` is name of current
+</span><span style="color:#080;font-style:italic">**    node. ``nodes`` is the
+</span><span style="color:#080;font-style:italic">**    names of nodes inside the list.
+</span><span style="color:#080;font-style:italic">*/</span>
+message ListNode {
+  required OpCodeTy opcode <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name     <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  repeated string nodes    <span style="color:#666">=</span> <span style="color:#666">3</span>;
+}
+
+message ConstTensorNode {
+  required OpCodeTy opcode      <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  required string name          <span style="color:#666">=</span> <span style="color:#666">2</span>;
+  required TorchDataType dtype  <span style="color:#666">=</span> <span style="color:#666">3</span>;
+  required FxConstantType ctype <span style="color:#666">=</span> <span style="color:#666">4</span>;
+  repeated int32 shape          <span style="color:#666">=</span> <span style="color:#666">5</span>;
+  repeated <span style="color:#0b0;font-weight:bold">double</span> values        <span style="color:#666">=</span> <span style="color:#666">6</span>;
+}
+
+message Node {
+  required OpCodeTy opcode              <span style="color:#666">=</span> <span style="color:#666">1</span>;
+  oneof node {
+    PlaceHolderNode placeholder_node    <span style="color:#666">=</span> <span style="color:#666">2</span>;
+    GetAttrNode get_attr_node           <span style="color:#666">=</span> <span style="color:#666">3</span>;
+    CallFunctionNode call_function_node <span style="color:#666">=</span> <span style="color:#666">4</span>;
+    CallModuleNode call_module_node     <span style="color:#666">=</span> <span style="color:#666">5</span>;
+    CallMethodNode call_method_node     <span style="color:#666">=</span> <span style="color:#666">6</span>;
+    OutputNode output_node              <span style="color:#666">=</span> <span style="color:#666">7</span>;
+    ConstantNode constant_node          <span style="color:#666">=</span> <span style="color:#666">8</span>;
+    ListNode list_node                  <span style="color:#666">=</span> <span style="color:#666">9</span>;
+    ConstTensorNode const_tensor_node   <span style="color:#666">=</span> <span style="color:#666">10</span>;
+  }
+}
+</code></pre></div></details>
+<h3 id="python-level-pipeline">Python level pipeline</h3>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">frontends/torch-frontend/torch-frontend/python/
+├── CMakeLists.txt                   |
+├── csrc                             |
+│   └── TorchFrontendModule.cpp      | 定义 pybind11 extension 模块，注册 bridge 需要的 pass 和 pipeline
+├── gen_version.py                   |
+├── setup.py                         |
+├── torch_frontend                   |
+│   ├── __init__.py                  | import torch-mlir/frontend 等模块
+│   ├── _torch_frontend_registry.py  |
+│   ├── compile.py                   | 封装 compile/compile_dynamo_model 接口，将 fx graph 或 nn.Module 转换为 mhlo 的表达
+│   ├── flash_attn_op.py             | helper <span style="color:#a2f;font-weight:bold">function</span>，替换 sdpa 为 flash_attn
+│   ├── fx_rewrite.py                | fx graph 图优化
+│   ├── fx_tracer.py                 | Tracer，用于符号执行，将 torch.nn.Module 转换为 fx graph
+│   ├── fx_utils.py                  | fx graph 相关的 pattern match 或 rewrite
+│   └── ts_utils.py                  | torchscript 相关的 rewrite
+└── version.txt                      |
+</code></pre></div><ul>
+<li>
+<p>custom ops set
+指定这些 ops 不用decompose或recompose，透传到 mhlo 的 custom call。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python">_CUSTOM_OPS_IN_TORCH <span style="color:#666">=</span> [
+    <span style="color:#b44">&#34;aten._softmax&#34;</span>,
+    <span style="color:#b44">&#34;aten.softmax.int&#34;</span>,
+    <span style="color:#b44">&#34;aten._log_softmax&#34;</span>,
+    <span style="color:#b44">&#34;aten.log_softmax.int&#34;</span>,
+    <span style="color:#b44">&#34;aten.native_layer_norm&#34;</span>,
+    <span style="color:#b44">&#34;aten.layer_norm&#34;</span>,
+    <span style="color:#b44">&#34;aten.group_norm&#34;</span>,
+    <span style="color:#b44">&#34;aten.native_group_norm&#34;</span>,
+    <span style="color:#b44">&#34;aten.gelu&#34;</span>,
+    <span style="color:#b44">&#34;aten.argmax&#34;</span>,
+    <span style="color:#b44">&#34;aten.max.dim&#34;</span>,
+    <span style="color:#b44">&#34;aten.one_hot&#34;</span>,
+    <span style="color:#b44">&#34;aten.topk&#34;</span>,
+    <span style="color:#b44">&#34;byteir.flash_attn_fwd&#34;</span>,
+    <span style="color:#b44">&#34;byteir.flash_attn_bwd&#34;</span>,
+]
+</code></pre></div></li>
+<li>
+<p>torch_frontend.compile
+复用 torch-mlir 的 <a href="https://github.com/llvm/torch-mlir/blob/17eeac880af409c6c0473c5930a2c08e25209f4c/projects/pt1/python/torch_mlir/torchscript.py#L314" target="_blank" rel="noopener">compile</a> 接口（<code>torchscript-module-to-torch-backend-pipeline</code>），将 <code>nn.Module</code> translate 到 符合backend contract的 torchscript ir，这一步其实非常繁琐：</p>
+</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> mlir<span style="color:#666">::</span>torch<span style="color:#666">::</span>Torch<span style="color:#666">::</span>createTorchScriptModuleToTorchBackendPipeline(
+    OpPassManager <span style="color:#666">&amp;</span>pm, <span style="color:#a2f;font-weight:bold">const</span> TorchLoweringPipelineOptions <span style="color:#666">&amp;</span>options) {
+  <span style="color:#080;font-style:italic">// When we import TorchScript IR, we import their entire &#34;compilation unit&#34;,
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// which can contain numerous functions unrelated to the current program,
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// which breaks torch-globalization-pipeline; for example, there can be
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// random functions referencing types that haven&#39;t been imported
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// as part of the root `torch.nn.Module` we imported. Those will
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// be unreferenced private functions which symbol-dce will clean up nicely.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createSymbolDCEPass());
+  <span style="color:#080;font-style:italic">// Globalize the program. The rest of the compiler assumes a globalized
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// program, which makes all analyses and transforms significantly easier
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// to write.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createPrepareForGlobalizeObjectGraphPass());
+  pm.addPass(createGlobalizeObjectGraphPass());
+  <span style="color:#080;font-style:italic">// &#34;lower&#34; `torch.global_slot` ops by deleting them if unused, which we
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// currently require because we don&#39;t have a lowering path for backends to
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// handle them.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// Torch usually inserts a few unused global slots so this ends up hitting
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// every single module even if it doesn&#39;t have any explicit slots.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// TODO: Support global slots in backends.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createSymbolDCEPass());
+  <span style="color:#080;font-style:italic">// Currently, our shape inference is not powerful enough to deal with
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// calls, so inline everything.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// TODO: Improve shape inference.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createInlinerPass());
+
+  createTorchFunctionToTorchBackendPipeline(pm, options);
+}
+
+<span style="color:#0b0;font-weight:bold">void</span> mlir<span style="color:#666">::</span>torch<span style="color:#666">::</span>Torch<span style="color:#666">::</span>createTorchFunctionToTorchBackendPipeline(
+    OpPassManager <span style="color:#666">&amp;</span>pm, <span style="color:#a2f;font-weight:bold">const</span> TorchLoweringPipelineOptions <span style="color:#666">&amp;</span>options) {
+  <span style="color:#080;font-style:italic">// Incorporate user annotations and remove signature Python-isms.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createAdjustCallingConventionsPass());
+  <span style="color:#080;font-style:italic">// Perform the bulk of lowering to the backend contract.
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// See the pass documentation for more information.
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createLowerToBackendContractPass(
+      options.maxIterations, options.decompose, options.backendLegalOps,
+      options.extraLibrary));
+}
+</code></pre></div><p>然后使用 <code>PassManager</code> 先将 <code>torchscript ir</code> lower（<code>torchscript-to-torch-pipeline</code>）到 torch dialect；以及通过<code>torch-to-mhlo-pipeline</code> lower 到 mhlo。</p>
+<ul>
+<li>
+<p>torch_frontend.compile_dynamo_model
+输入的 model 类型是 fx graph，<code>FxImporter.import_graph_module</code> 作为 bridge 直接将 fx graph 解析翻译到 mlir module。然后通过 pipeline <code>torch-function-to-torch-pipeline</code> 和 <code>torch-to-mhlo-pipeline</code> 完成 lowering。</p>
+</li>
+<li>
+<p><a href="https://github.com/llvm/torch-mlir/blob/main/python/torch_mlir/extras/fx_importer.py" target="_blank" rel="noopener">FxImporter</a>
+这个模块用于支持 torch dynamo(<em>Main entry-point for importing an fx.GraphModule.</em>)。因为 dynamo 抓图后会做 functionalize，所以 fx graph 的nodes按拓扑序排序的，importer只需要遍历nodes逐个翻译即可。对于每个 node，根据其 opcode 做相应的处理。</p>
+  <details><summary>importer 核心逻辑</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python">    <span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">import_nodes</span>(self, nodes: Sequence[torch_fx<span style="color:#666">.</span>Node]):
+        <span style="color:#a2f;font-weight:bold">with</span> InsertionPoint(self<span style="color:#666">.</span>_b):
+            loc <span style="color:#666">=</span> Location<span style="color:#666">.</span>unknown()
+            num_placeholders <span style="color:#666">=</span> <span style="color:#666">0</span>
+            <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> nodes:
+                op <span style="color:#666">=</span> node<span style="color:#666">.</span>op
+                <span style="color:#080;font-style:italic"># Attempt to extract locations. Not everything has them,</span>
+                <span style="color:#080;font-style:italic"># so we do our best.</span>
+                new_loc <span style="color:#666">=</span> self<span style="color:#666">.</span>_cc<span style="color:#666">.</span>get_node_location(node)
+                <span style="color:#a2f;font-weight:bold">if</span> new_loc <span style="color:#a2f;font-weight:bold">is</span> <span style="color:#a2f;font-weight:bold">not</span> None:
+                    loc <span style="color:#666">=</span> new_loc
+                <span style="color:#a2f;font-weight:bold">if</span> op <span style="color:#666">==</span> <span style="color:#b44">&#34;placeholder&#34;</span>:
+                    <span style="color:#080;font-style:italic"># Associate the placeholder node with corresponding block</span>
+                    <span style="color:#080;font-style:italic"># argument.</span>
+                    self<span style="color:#666">.</span>_v[(node, <span style="color:#666">0</span>)] <span style="color:#666">=</span> self<span style="color:#666">.</span>_b<span style="color:#666">.</span>arguments[num_placeholders]
+                    num_placeholders <span style="color:#666">+=</span> <span style="color:#666">1</span>
+                <span style="color:#a2f;font-weight:bold">elif</span> op <span style="color:#666">==</span> <span style="color:#b44">&#34;call_function&#34;</span>:
+                    target <span style="color:#666">=</span> node<span style="color:#666">.</span>target
+                    <span style="color:#a2f;font-weight:bold">if</span> target <span style="color:#666">==</span> operator<span style="color:#666">.</span>getitem:
+                        <span style="color:#080;font-style:italic"># Special case handling of getitem for when it is resolving</span>
+                        <span style="color:#080;font-style:italic"># against a function call that we know has returned multiple</span>
+                        <span style="color:#080;font-style:italic"># results. We short-circuit this case because we have modeled</span>
+                        <span style="color:#080;font-style:italic"># function calls to natively return multiple results vs tupling.</span>
+                        getitem_ref, getitem_index <span style="color:#666">=</span> node<span style="color:#666">.</span>args
+                        <span style="color:#a2f;font-weight:bold">if</span> getitem_ref <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>_multi_result_nodes:
+                            <span style="color:#a2f;font-weight:bold">try</span>:
+                                self<span style="color:#666">.</span>_v[(node, <span style="color:#666">0</span>)] <span style="color:#666">=</span> self<span style="color:#666">.</span>_v[
+                                    (getitem_ref, getitem_index)
+                                ]
+                            <span style="color:#a2f;font-weight:bold">except</span> <span style="color:#d2413a;font-weight:bold">IndexError</span>:
+                                <span style="color:#a2f;font-weight:bold">raise</span> <span style="color:#d2413a;font-weight:bold">RuntimeError</span>(
+                                    f<span style="color:#b44">&#34;getitem de-aliasing failed. This likely &#34;</span>
+                                    f<span style="color:#b44">&#34;indicates a programmer error that usually &#34;</span>
+                                    f<span style="color:#b44">&#34;would have happened at runtime. Please &#34;</span>
+                                    f<span style="color:#b44">&#34;notify developers if this case happens &#34;</span>
+                                    f<span style="color:#b44">&#34;(at {loc}).&#34;</span>
+                                )
+                        <span style="color:#a2f;font-weight:bold">else</span>:
+                            <span style="color:#a2f;font-weight:bold">raise</span> <span style="color:#d2413a;font-weight:bold">NotImplementedError</span>(
+                                f<span style="color:#b44">&#34;General getitem access to non-multi-result ops&#34;</span>
+                            )
+                    <span style="color:#a2f;font-weight:bold">elif</span> <span style="color:#a2f">isinstance</span>(target, TorchOpOverload):
+                        <span style="color:#080;font-style:italic"># Dispatch to an ATen op.</span>
+                        self<span style="color:#666">.</span>_import_torch_op_overload(loc, node, target)
+                    <span style="color:#a2f;font-weight:bold">elif</span> target <span style="color:#a2f;font-weight:bold">in</span> SYMBOLIC_TORCH_OPS <span style="color:#a2f;font-weight:bold">or</span> (
+                        is_symbolic(node<span style="color:#666">.</span>meta<span style="color:#666">.</span>get(<span style="color:#b44">&#34;val&#34;</span>))
+                        <span style="color:#a2f;font-weight:bold">and</span> is_builtin_function_or_method(target)
+                    ):
+                        self<span style="color:#666">.</span>_import_symbolic_torch_op(loc, node, target)
+                    <span style="color:#a2f;font-weight:bold">else</span>:
+                        <span style="color:#a2f;font-weight:bold">raise</span> <span style="color:#d2413a;font-weight:bold">NotImplementedError</span>(
+                            f<span style="color:#b44">&#34;FIX ME: Unimplemented call_function: target={node.target}, {node.meta}&#34;</span>
+                        )
+                <span style="color:#a2f;font-weight:bold">elif</span> op <span style="color:#666">==</span> <span style="color:#b44">&#34;output&#34;</span>:
+                    <span style="color:#080;font-style:italic"># args[0] is a singleton tuple that we flatten into multiple</span>
+                    <span style="color:#080;font-style:italic"># results.</span>
+                    operands <span style="color:#666">=</span> [self<span style="color:#666">.</span>_import_argument(loc, arg) <span style="color:#a2f;font-weight:bold">for</span> arg <span style="color:#a2f;font-weight:bold">in</span> node<span style="color:#666">.</span>args[<span style="color:#666">0</span>]]
+                    func_dialect<span style="color:#666">.</span>ReturnOp(operands, loc<span style="color:#666">=</span>loc)
+</code></pre></div>  </details>
+  <details><summary>早先实现过类似的功能(:</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">/*static*/</span> mlir<span style="color:#666">::</span>OwningOpRef<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>ModuleOp<span style="color:#666">&gt;</span>
+FxGraphParserImpl<span style="color:#666">::</span>ConvertFxGraphToTorch(<span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string <span style="color:#666">&amp;</span>sg, Arguments <span style="color:#666">&amp;</span>args,
+                                        CodeGenOpts <span style="color:#666">&amp;</span>opts) {
+<span style="color:#080;font-style:italic">// FIXME(chhuang) Why do we need to reset MLIRContext everytime?
+</span><span style="color:#080;font-style:italic"></span>setMLIRContext();
+
+fx_graph_cpp<span style="color:#666">::</span>Graph g;
+<span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>g.ParseFromString(sg)) {
+    std<span style="color:#666">::</span>cerr <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;decode sg fail</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+}
+
+<span style="color:#a2f;font-weight:bold">if</span> (opts.disable_threading)
+    context_.disableMultithreading(<span style="color:#a2f">true</span>);
+<span style="color:#080;font-style:italic">// TODO gen func info. not hard-coded here.
+</span><span style="color:#080;font-style:italic"></span>mlir<span style="color:#666">::</span>Attribute debugModuleNameAttr <span style="color:#666">=</span>
+    mlir<span style="color:#666">::</span>StringAttr<span style="color:#666">::</span>get(<span style="color:#666">&amp;</span>context_, <span style="color:#b44">&#34;grace_torch_module&#34;</span>);
+std<span style="color:#666">::</span>string entry_name(<span style="color:#b44">&#34;serving_default&#34;</span>);
+
+mlir<span style="color:#666">::</span>Location loc <span style="color:#666">=</span> mlir<span style="color:#666">::</span>Location(mlir<span style="color:#666">::</span>UnknownLoc<span style="color:#666">::</span>get(<span style="color:#666">&amp;</span>context_));
+mlir<span style="color:#666">::</span>ModuleOp module <span style="color:#666">=</span> mlir<span style="color:#666">::</span>ModuleOp<span style="color:#666">::</span>create(loc);
+module<span style="color:#666">-&gt;</span>setAttr(<span style="color:#b44">&#34;torch.debug_module_name&#34;</span>, debugModuleNameAttr);
+mlir<span style="color:#666">::</span>OpBuilder builder(<span style="color:#666">&amp;</span>context_);
+
+mlir<span style="color:#666">::</span>Region <span style="color:#666">&amp;</span>region <span style="color:#666">=</span> module.getBodyRegion();
+builder.setInsertionPointToStart(<span style="color:#666">&amp;</span>region.front());
+
+FxName2OpMap name2op_map;
+FxName2NodeMap name2node_map;
+
+<span style="color:#080;font-style:italic">// Create mlir funcOp
+</span><span style="color:#080;font-style:italic">// FIXME make sure the in/output order in the graph is same with
+</span><span style="color:#080;font-style:italic">// example_inputs.
+</span><span style="color:#080;font-style:italic"></span>llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>Type<span style="color:#666">&gt;</span> arg_types;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>Type<span style="color:#666">&gt;</span> res_types;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>PlaceHolderNode <span style="color:#666">*&gt;</span> placeholder_nodes;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>CallFunctionNode <span style="color:#666">*&gt;</span> call_function_nodes;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>OutputNode <span style="color:#666">*&gt;</span> output_nodes;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>ConstantNode <span style="color:#666">*&gt;</span> constant_nodes;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>ListNode <span style="color:#666">*&gt;</span> list_nodes;
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>ConstTensorNode <span style="color:#666">*&gt;</span> const_tensor_nodes;
+
+<span style="color:#080;font-style:italic">// One could not get returnOp&#39;s info in the first time. In the first stage,
+</span><span style="color:#080;font-style:italic">// creates a function body without return value; in the second stage, creates
+</span><span style="color:#080;font-style:italic">// all nodes inside function body; in the third stage, gets output info and
+</span><span style="color:#080;font-style:italic">// reset function type with input/output info.
+</span><span style="color:#080;font-style:italic">// Stage 1.
+</span><span style="color:#080;font-style:italic">// args.entry_func.append(sg);
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span><span style="color:#a0a000">node</span> : g.nodes()) {
+    <span style="color:#a2f;font-weight:bold">switch</span> (node.opcode()) {
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">PLACEHOLDER</span>: {
+    name2node_map[node.placeholder_node().name()] <span style="color:#666">=</span> <span style="color:#666">&amp;</span>node;
+    <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>tensor_meta <span style="color:#666">=</span> node.placeholder_node().meta().tensor_meta();
+    arg_types.push_back(getFxTensorType(<span style="color:#666">&amp;</span>context_, tensor_meta));
+    }
+    placeholder_nodes.push_back(<span style="color:#666">&amp;</span>node.placeholder_node());
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">OUTPUT</span>:
+    name2node_map[node.output_node().name()] <span style="color:#666">=</span> <span style="color:#666">&amp;</span>node;
+    output_nodes.push_back(<span style="color:#666">&amp;</span>node.output_node());
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLFUNCTION</span>:
+    name2node_map[node.call_function_node().name()] <span style="color:#666">=</span> <span style="color:#666">&amp;</span>node;
+    call_function_nodes.push_back(<span style="color:#666">&amp;</span>node.call_function_node());
+    <span style="color:#080;font-style:italic">// args.entry_func.append(node.call_function_node().name());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CONSTANT</span>:
+    constant_nodes.push_back(<span style="color:#666">&amp;</span>node.constant_node());
+    <span style="color:#080;font-style:italic">// args.entry_func.append(node.constant_node().name());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">LIST</span>:
+    list_nodes.push_back(<span style="color:#666">&amp;</span>node.list_node());
+    <span style="color:#080;font-style:italic">// args.entry_func.append(node.list_node().name());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">GETATTR</span>:
+    name2node_map[node.get_attr_node().name()] <span style="color:#666">=</span> <span style="color:#666">&amp;</span>node;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span>  fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CONSTANT_TENSOR</span>:
+    const_tensor_nodes.push_back(<span style="color:#666">&amp;</span>node.const_tensor_node());
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLMODULE</span>:
+    <span style="color:#080;font-style:italic">// break;
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLMETHON</span>:
+    <span style="color:#080;font-style:italic">// break;
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">default</span><span style="color:#666">:</span>
+    llvm<span style="color:#666">::</span>errs() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;Unsupported opcode in stage 1:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>
+                <span style="color:#666">&lt;&lt;</span> node.DebugString() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    }
+}
+res_types.clear();
+
+<span style="color:#080;font-style:italic">// FIXME One should make a resumption that subgraph exported from dynamo has
+</span><span style="color:#080;font-style:italic">// and only has one function(block).
+</span><span style="color:#080;font-style:italic"></span>FunctionType functype <span style="color:#666">=</span> builder.getFunctionType(arg_types, res_types);
+<span style="color:#a2f;font-weight:bold">auto</span> funcOp <span style="color:#666">=</span> builder.create<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(loc, entry_name, functype);
+Block <span style="color:#666">*</span>func_block <span style="color:#666">=</span> funcOp.addEntryBlock();
+builder.setInsertionPointToEnd(<span style="color:#666">&amp;</span>funcOp.getBody().front());
+
+<span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">int64_t</span> idx <span style="color:#666">=</span> <span style="color:#666">0</span>; idx <span style="color:#666">&lt;</span> placeholder_nodes.size(); <span style="color:#666">++</span>idx) {
+    name2op_map[placeholder_nodes[idx]<span style="color:#666">-&gt;</span>name()] <span style="color:#666">=</span> funcOp.getArgument(idx);
+}
+
+<span style="color:#080;font-style:italic">// Stage 2. Add nodes.
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span><span style="color:#a0a000">node</span> : g.nodes()) {
+    Value new_node;
+    <span style="color:#a2f;font-weight:bold">switch</span> (node.opcode()) {
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">PLACEHOLDER</span>:
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">OUTPUT</span>:
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLFUNCTION</span>:
+    new_node <span style="color:#666">=</span> createTorchOpNode(builder, <span style="color:#666">&amp;</span>context_,
+                                <span style="color:#666">&amp;</span>node.call_function_node(), name2op_map);
+    name2op_map[node.call_function_node().name()] <span style="color:#666">=</span> new_node;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CONSTANT</span>:
+    new_node <span style="color:#666">=</span>
+        createTorchConstantNode(builder, <span style="color:#666">&amp;</span>context_, <span style="color:#666">&amp;</span>node.constant_node());
+    name2op_map[node.constant_node().name()] <span style="color:#666">=</span> new_node;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">LIST</span>:
+    new_node <span style="color:#666">=</span> createTorchListArgNode(builder, <span style="color:#666">&amp;</span>context_, <span style="color:#666">&amp;</span>node.list_node(),
+                                        name2op_map);
+    name2op_map[node.list_node().name()] <span style="color:#666">=</span> new_node;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">GETATTR</span>:
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CONSTANT_TENSOR</span>:
+    new_node <span style="color:#666">=</span> creareTorchConstTensorNode(builder, <span style="color:#666">&amp;</span>context_, <span style="color:#666">&amp;</span>node.const_tensor_node());
+    name2op_map[node.const_tensor_node().name()] <span style="color:#666">=</span> new_node;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLMODULE</span>:
+    <span style="color:#080;font-style:italic">// break;
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span><span style="color:#a0a000">CALLMETHON</span>:
+    <span style="color:#080;font-style:italic">// break;
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">default</span><span style="color:#666">:</span>
+    llvm<span style="color:#666">::</span>errs() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;Unsupported opcode in stage 2:</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>
+                <span style="color:#666">&lt;&lt;</span> node.DebugString() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    <span style="color:#a2f;font-weight:bold">break</span>;
+    }
+}
+
+<span style="color:#080;font-style:italic">// convert proto deviceTy to mtrt deviceTy.
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">auto</span> setDeviceTy <span style="color:#666">=</span> [](<span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>Device <span style="color:#666">&amp;</span>device) {
+    <span style="color:#a2f;font-weight:bold">switch</span> (device.device_type()) {
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>Device<span style="color:#666">::</span><span style="color:#a0a000">CPU</span>:
+    <span style="color:#a2f;font-weight:bold">return</span> DeviceType<span style="color:#666">::</span>CPU;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>Device<span style="color:#666">::</span><span style="color:#a0a000">MUSA</span>:
+    <span style="color:#a2f;font-weight:bold">return</span> DeviceType<span style="color:#666">::</span>MUSA;
+    <span style="color:#a2f;font-weight:bold">case</span> fx_graph_cpp<span style="color:#666">::</span>Device<span style="color:#666">::</span><span style="color:#a0a000">CUDA</span>:
+    <span style="color:#a2f;font-weight:bold">return</span> DeviceType<span style="color:#666">::</span>CUDA;
+    <span style="color:#a2f;font-weight:bold">default</span><span style="color:#666">:</span>
+    <span style="color:#a2f;font-weight:bold">return</span> DeviceType<span style="color:#666">::</span>UNKNOWN;
+    }
+};
+
+<span style="color:#080;font-style:italic">// Stage 3. Append ReturnOp(which is required).
+</span><span style="color:#080;font-style:italic"></span>assert(output_nodes.size() <span style="color:#666">==</span> <span style="color:#666">1</span> <span style="color:#666">&amp;&amp;</span> <span style="color:#b44">&#34;Invalid number output_nodes&#34;</span>);
+llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span>Value<span style="color:#666">&gt;</span> res_values;
+<span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span><span style="color:#a0a000">out_val_name</span> : output_nodes[<span style="color:#666">0</span>]<span style="color:#666">-&gt;</span>outputs()) {
+    DeviceType _deviceType;
+    <span style="color:#a2f;font-weight:bold">const</span> fx_graph_cpp<span style="color:#666">::</span>NodeMeta <span style="color:#666">*</span>node_meta <span style="color:#666">=</span> <span style="color:#a2f">NULL</span>;
+    <span style="color:#a2f;font-weight:bold">if</span> (name2node_map[out_val_name]<span style="color:#666">-&gt;</span>opcode() <span style="color:#666">==</span>
+        fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span>CALLFUNCTION)
+    node_meta <span style="color:#666">=</span> <span style="color:#666">&amp;</span>name2node_map[out_val_name]<span style="color:#666">-&gt;</span>call_function_node().meta();
+    <span style="color:#a2f;font-weight:bold">else</span> <span style="color:#00a000">if</span> (name2node_map[out_val_name]<span style="color:#666">-&gt;</span>opcode() <span style="color:#666">==</span>
+            fx_graph_cpp<span style="color:#666">::</span>OpCodeTy<span style="color:#666">::</span>PLACEHOLDER)
+    node_meta <span style="color:#666">=</span> <span style="color:#666">&amp;</span>name2node_map[out_val_name]<span style="color:#666">-&gt;</span>placeholder_node().meta();
+    <span style="color:#a2f;font-weight:bold">else</span>
+    <span style="color:#00a000">assert</span>(<span style="color:#666">0</span> <span style="color:#666">&amp;&amp;</span> <span style="color:#b44">&#34;Invalid output nodes opcode&#34;</span>);
+
+    <span style="color:#a2f;font-weight:bold">if</span> (node_meta<span style="color:#666">-&gt;</span>val_size() <span style="color:#666">==</span> <span style="color:#666">0</span>) {
+    llvm<span style="color:#666">::</span>errs() <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#34;op set device err</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>;
+    } <span style="color:#a2f;font-weight:bold">else</span> {
+    _deviceType <span style="color:#666">=</span> setDeviceTy(node_meta<span style="color:#666">-&gt;</span>val(<span style="color:#666">0</span>).device());
+    }
+
+    Value out_val <span style="color:#666">=</span> name2op_map[out_val_name];
+    res_values.push_back(out_val);
+    res_types.push_back(out_val.getType());
+    <span style="color:#080;font-style:italic">// FIXME may return scalar type.
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// if (auto resTensorType =
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//         out_val.getType().dyn_cast&lt;Torch::BaseTensorType&gt;()) {
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   auto res_shape = resTensorType.getSizes();
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   std::vector&lt;int64_t&gt; _shape(res_shape.begin(), res_shape.end());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   Type resElementTy = resTensorType.getDtype();
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   DataType _dtype = FxGraphParserImpl::mapMlirDType2Grace(resElementTy);
+</span><span style="color:#080;font-style:italic"></span>
+    <span style="color:#080;font-style:italic">//   std::vector&lt;int64_t&gt; _stride;
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   _stride.reserve(node_meta-&gt;tensor_meta().stride_size());
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   for (auto s : node_meta-&gt;tensor_meta().stride()) {
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//     _stride.push_back(s);
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   }
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   args.outputs.push_back(
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//       std::move(MetaTensor(_dtype, _shape, _stride, 0, _deviceType)));
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// } else {
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//   llvm::report_fatal_error(
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">//       &#34;Unsupport result type, only expect Torch::BaseTensorType yet&#34;);
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// }
+</span><span style="color:#080;font-style:italic"></span>}
+
+<span style="color:#080;font-style:italic">// Update FunctionType, as missing return info before.
+</span><span style="color:#080;font-style:italic"></span>FunctionType new_functype <span style="color:#666">=</span> builder.getFunctionType(arg_types, res_types);
+funcOp.setFunctionType(new_functype);
+
+builder.setInsertionPointToEnd(<span style="color:#666">&amp;</span>funcOp.getBody().front());
+builder.create<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>ReturnOp<span style="color:#666">&gt;</span>(loc, res_values);
+
+llvm<span style="color:#666">::</span>raw_string_ostream os(args.entry_func);
+module.print(os);
+<span style="color:#a2f;font-weight:bold">return</span> mlir<span style="color:#666">::</span>OwningOpRef<span style="color:#666">&lt;</span>mlir<span style="color:#666">::</span>ModuleOp<span style="color:#666">&gt;</span>(module);
+}
+</code></pre></div>  <details>
+</li>
+<li>
+<p><code>replace_flash_attn</code>
+graph level 的op优化，尝试将 fx graph 中 <code>sdpa</code> 替换为 <code>CustomFlashAttnFunc</code>（当没有mask且是causal的），替换后的实现如下：</p>
+</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python"><span style="color:#a2f">@op</span>(<span style="color:#b44">&#34;byteir::flash_attn_fwd(Tensor q, Tensor k, Tensor v, float dropout_p, float softmax_scale, bool casual, bool return_softmax) -&gt; (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)&#34;</span>)
+<span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">byteir_flash_attn_fwd</span>(q, k, v, dropout_p, softmax_scale, causal, return_softmax):
+    sizes <span style="color:#666">=</span> q<span style="color:#666">.</span>shape
+    batch_size <span style="color:#666">=</span> sizes[<span style="color:#666">0</span>]
+    seqlen_q <span style="color:#666">=</span> sizes[<span style="color:#666">1</span>]
+    num_heads <span style="color:#666">=</span> sizes[<span style="color:#666">2</span>]
+    seqlen_k <span style="color:#666">=</span> k<span style="color:#666">.</span>shape[<span style="color:#666">1</span>]
+
+    rng <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty((<span style="color:#666">2</span>), dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>int64, device<span style="color:#666">=</span><span style="color:#b44">&#39;meta&#39;</span>)
+    softmax_lse <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty(
+        (batch_size, num_heads, seqlen_q), dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>float, device<span style="color:#666">=</span><span style="color:#b44">&#39;meta&#39;</span>)
+    p <span style="color:#666">=</span> None
+    <span style="color:#a2f;font-weight:bold">if</span> (return_softmax):
+        p <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty((batch_size, num_heads, seqlen_q,
+                        seqlen_k), dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>float, device<span style="color:#666">=</span><span style="color:#b44">&#39;meta&#39;</span>)
+    q_padded <span style="color:#666">=</span> q
+    k_padded <span style="color:#666">=</span> k
+    v_padded <span style="color:#666">=</span> v
+    out <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty_like(q_padded)
+    out_padded <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty_like(out)
+    <span style="color:#a2f;font-weight:bold">return</span> out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p, rng
+
+
+<span style="color:#a2f">@op</span>(<span style="color:#b44">&#34;byteir::flash_attn_bwd(Tensor dout, Tensor q, Tensor k, Tensor v, Tensor out, Tensor softmax_lse, float dropout_p, float softmax_scale, bool casual, Tensor rng) -&gt; (Tensor, Tensor, Tensor, Tensor, Tensor)&#34;</span>)
+<span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">byteir_flash_attn_bwd</span>(dout, q, k, v, out, softmax_lse, dropout_p, softmax_scale, causal, rng_state):
+    sizes <span style="color:#666">=</span> q<span style="color:#666">.</span>shape
+    batch_size <span style="color:#666">=</span> sizes[<span style="color:#666">0</span>]
+    seqlen_q <span style="color:#666">=</span> sizes[<span style="color:#666">1</span>]
+    num_heads <span style="color:#666">=</span> sizes[<span style="color:#666">2</span>]
+    seqlen_q_rounded <span style="color:#666">=</span> ((seqlen_q<span style="color:#666">+</span><span style="color:#666">127</span>)<span style="color:#666">//</span><span style="color:#666">128</span>)<span style="color:#666">*</span><span style="color:#666">128</span>
+    head_size <span style="color:#666">=</span> sizes[<span style="color:#666">3</span>]
+    head_size_rounded <span style="color:#666">=</span> ((head_size<span style="color:#666">+</span><span style="color:#666">31</span>)<span style="color:#666">//</span><span style="color:#666">32</span>)<span style="color:#666">*</span><span style="color:#666">32</span>
+    dq_accum <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty((batch_size, num_heads, seqlen_q_rounded, head_size_rounded), dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>float, device<span style="color:#666">=</span><span style="color:#b44">&#39;meta&#39;</span>)
+    softmax_d <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty((batch_size, num_heads, seqlen_q_rounded), dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>float, device<span style="color:#666">=</span><span style="color:#b44">&#39;meta&#39;</span>)
+    dq <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty_like(q)
+    dk <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty_like(k)
+    dv <span style="color:#666">=</span> torch<span style="color:#666">.</span>empty_like(v)
+    <span style="color:#a2f;font-weight:bold">return</span> dq, dk, dv, softmax_d, dq_accum
+</code></pre></div><p>其实是返回empty tensor，因为这里只是想透传 flashattn 到 mhlo，并不需要具体的实现。</p>
+<ul>
+<li>
+<p><code>fx_replace_attn_pattern</code>
+graph level pattern match and rewrite.</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python"><span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">fx_replace_attn_pattern</span>(gm: torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>GraphModule):
+    gm <span style="color:#666">=</span> canonicalize_graph_before_replacement(gm)
+    <span style="color:#080;font-style:italic"># Need hf_symbolic_trace to trace torch.full</span>
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, hf_symbolic_trace(AttnPattern), AttnReplacement)
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, AttnPattern1, AttnReplacement1)
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, AttnPattern2, AttnReplacement2)
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, AttnPattern3, AttnReplacement3)
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, AttnPattern4, AttnReplacement4)
+    torch<span style="color:#666">.</span>fx<span style="color:#666">.</span>replace_pattern(gm, AttnPattern5, AttnReplacement5)
+    <span style="color:#a2f;font-weight:bold">return</span> gm
+</code></pre></div><p>针对各个LLM中的attn的pattern去匹配并重写attn算子，替换为<code>torch.ops.aten.scaled_dot_product_attention</code>。
+GPT2 中 attn 的 pattern如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python"><span style="color:#080;font-style:italic"># GPT2 Attention patterns</span>
+<span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">AttnPattern</span>(query, key, value, causal_mask, mask_value, inv_scale, device, dropout_p):
+    attn_weights <span style="color:#666">=</span> torch<span style="color:#666">.</span>matmul(query, key<span style="color:#666">.</span>transpose(<span style="color:#666">-</span><span style="color:#666">1</span>, <span style="color:#666">-</span><span style="color:#666">2</span>))
+    attn_weights <span style="color:#666">=</span> attn_weights <span style="color:#666">/</span> torch<span style="color:#666">.</span>full(
+        [], inv_scale, dtype<span style="color:#666">=</span>torch<span style="color:#666">.</span>float16, device<span style="color:#666">=</span>device
+    )
+    attn_weights <span style="color:#666">=</span> torch<span style="color:#666">.</span>where(causal_mask, attn_weights<span style="color:#666">.</span>to(torch<span style="color:#666">.</span>float16), mask_value)
+    attn_weights <span style="color:#666">=</span> torch<span style="color:#666">.</span>nn<span style="color:#666">.</span>functional<span style="color:#666">.</span>softmax(attn_weights, dim<span style="color:#666">=-</span><span style="color:#666">1</span>)
+    attn_weights <span style="color:#666">=</span> attn_weights<span style="color:#666">.</span>type(torch<span style="color:#666">.</span>float16)
+    attn_weights <span style="color:#666">=</span> torch<span style="color:#666">.</span>nn<span style="color:#666">.</span>functional<span style="color:#666">.</span>dropout(attn_weights, p<span style="color:#666">=</span>dropout_p)
+    attn_output <span style="color:#666">=</span> torch<span style="color:#666">.</span>matmul(attn_weights, value)
+    <span style="color:#a2f;font-weight:bold">return</span> attn_output
+</code></pre></div><p>不妨再关注一下 fx 提供的 <em>match and rewrite</em> infra：<code>SubgraphMatcher</code>
+将input nodes 或 output nodes 作为 candidate anchor，用回溯算法逐个去尝试match 给定的 pattern。</p>
+  <details><summary>SubgraphMatcher.match</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Python" data-lang="Python"><span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">match</span>(self, graph: Graph) <span style="color:#666">-&gt;</span> List[InternalMatch]:
+<span style="color:#b44">&#34;&#34;&#34;
+</span><span style="color:#b44">Returns:
+</span><span style="color:#b44">    The matched subgraphs.
+</span><span style="color:#b44">    Thre returned subgraph would be fully self-contained, meaning the nodes (except placeholder
+</span><span style="color:#b44">    and nodes returned by output) can only be consumed by nodes within the matched subgraph.
+</span><span style="color:#b44">
+</span><span style="color:#b44">Subgraph pattern matcher is implemented with the backtracking style in the following steps:
+</span><span style="color:#b44">
+</span><span style="color:#b44">1. We first identify all the anchor nodes in the pattern graph. The anchor nodes
+</span><span style="color:#b44">are the &#34;sinks&#34; (nodes with no user other than the output node) of the pattern graph.
+</span><span style="color:#b44">One pattern graph could have multiple anchors if it has multiple return values.
+</span><span style="color:#b44">
+</span><span style="color:#b44">2. In the target graph, we identify the potential candidate nodes that can be matched
+</span><span style="color:#b44">with each anchor. These anchor-candidate pairs are the starting points for
+</span><span style="color:#b44">pairwise per-node matching.
+</span><span style="color:#b44">
+</span><span style="color:#b44">3. For each anchor-candidate pair, we simultaneously traverse backwards (DFS) in both
+</span><span style="color:#b44">pattern and target graphs. For every pattern nodes along traversal path, we compare it
+</span><span style="color:#b44">against the target nodes. In case any comparison failed, the match for this anchor-candidate
+</span><span style="color:#b44">pair fails. A match is found when DFS completes traversing the graph. See `self._match_nodes`
+</span><span style="color:#b44">for more details.
+</span><span style="color:#b44">
+</span><span style="color:#b44">4. In the case of multiple anchors, every anchor will need to find a match using step 3.
+</span><span style="color:#b44">In addition, the matches found between anchors need to have a common intersection node
+</span><span style="color:#b44">in order for the match to be valid. This is implemented with backtracking. See `backtracking`
+</span><span style="color:#b44">for more details.
+</span><span style="color:#b44">
+</span><span style="color:#b44">Notice: graph traversal must be done in the reverser order because a tensor can have multiple
+</span><span style="color:#b44">consumers, but can only have a single producer. Only with reverser order, we can we jointly
+</span><span style="color:#b44">traverse the pattern and target graph in a deterministic path.
+</span><span style="color:#b44">
+</span><span style="color:#b44">Warning: In theory, this backtracking algorithm have an **exponential** time complexity. However,
+</span><span style="color:#b44">in practice, it&#39;s unlikely to blow up.
+</span><span style="color:#b44">
+</span><span style="color:#b44">&#34;&#34;&#34;</span>
+<span style="color:#a2f;font-weight:bold">from</span> <span style="color:#00f;font-weight:bold">torch.fx.passes.utils.fuser_utils</span> <span style="color:#a2f;font-weight:bold">import</span> validate_partition
+
+<span style="color:#080;font-style:italic"># find candidate nodes to match with pattern anchors</span>
+match_candidates: Dict[Node, List[Node]] <span style="color:#666">=</span> defaultdict(<span style="color:#a2f">list</span>)
+<span style="color:#a2f;font-weight:bold">for</span> pattern_anchor <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>pattern_anchors:
+    <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> graph<span style="color:#666">.</span>nodes:
+        <span style="color:#a2f;font-weight:bold">if</span> self<span style="color:#666">.</span>_nodes_are_equal(pattern_anchor, node):
+            match_candidates[pattern_anchor]<span style="color:#666">.</span>append(node)
+match_candidates_list <span style="color:#666">=</span> <span style="color:#a2f">list</span>(match_candidates<span style="color:#666">.</span>items())
+
+logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Initial match_candidates_list: </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, match_candidates_list)
+
+matches: List[InternalMatch] <span style="color:#666">=</span> []
+
+<span style="color:#a2f;font-weight:bold">def</span> <span style="color:#00a000">backtracking</span>(anchor_index, match):
+    <span style="color:#a2f;font-weight:bold">if</span> anchor_index <span style="color:#666">==</span> <span style="color:#a2f">len</span>(match_candidates_list):
+        match<span style="color:#666">.</span>placeholder_nodes <span style="color:#666">=</span> [match<span style="color:#666">.</span>nodes_map[pn] <span style="color:#a2f;font-weight:bold">for</span> pn <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>pattern_placeholder_nodes]
+        match<span style="color:#666">.</span>returning_nodes <span style="color:#666">=</span> [match<span style="color:#666">.</span>nodes_map[pn] <span style="color:#a2f;font-weight:bold">for</span> pn <span style="color:#a2f;font-weight:bold">in</span> self<span style="color:#666">.</span>pattern_returning_nodes]
+        matches<span style="color:#666">.</span>append(match)
+
+        logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Found a match: </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, match)
+        <span style="color:#a2f;font-weight:bold">return</span>
+
+    pattern_anchor, candidate_nodes <span style="color:#666">=</span> match_candidates_list[anchor_index]
+    saved_match <span style="color:#666">=</span> copy<span style="color:#666">.</span>copy(match)
+
+    <span style="color:#a2f;font-weight:bold">for</span> node <span style="color:#a2f;font-weight:bold">in</span> candidate_nodes:
+        logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Trying to match anchor </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44"> to </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44">&#34;</span>, pattern_anchor, node)
+
+        match_found <span style="color:#666">=</span> self<span style="color:#666">.</span>_match_nodes(pattern_anchor, node, match)
+        <span style="color:#a2f;font-weight:bold">if</span> match_found:
+            <span style="color:#080;font-style:italic"># match next anchor</span>
+            backtracking(anchor_index <span style="color:#666">+</span> <span style="color:#666">1</span>, match)
+        <span style="color:#a2f;font-weight:bold">else</span>:
+            logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Failed to match anchor </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44"> to </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>, pattern_anchor, node)
+
+        <span style="color:#080;font-style:italic"># revert to saved_match before matching with current anchor</span>
+        match <span style="color:#666">=</span> copy<span style="color:#666">.</span>copy(saved_match)
+
+match <span style="color:#666">=</span> InternalMatch(anchors<span style="color:#666">=</span>self<span style="color:#666">.</span>pattern_anchors)
+<span style="color:#a2f;font-weight:bold">if</span> match_candidates_list:
+    backtracking(<span style="color:#666">0</span>, match)
+
+<span style="color:#080;font-style:italic"># filter out the matches where the subgraph is not fully_contained</span>
+before <span style="color:#666">=</span> <span style="color:#a2f">len</span>(matches)
+matches <span style="color:#666">=</span> [match <span style="color:#a2f;font-weight:bold">for</span> match <span style="color:#a2f;font-weight:bold">in</span> matches <span style="color:#a2f;font-weight:bold">if</span> self<span style="color:#666">.</span>_is_contained(match<span style="color:#666">.</span>nodes_map)]
+after <span style="color:#666">=</span> <span style="color:#a2f">len</span>(matches)
+<span style="color:#a2f;font-weight:bold">if</span> before <span style="color:#666">!=</span> after:
+    logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Filtered out </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44"> matches because they are not fully contained&#34;</span>, before <span style="color:#666">-</span> after)
+
+<span style="color:#080;font-style:italic"># filter out the matches that form a cycle if the subgraph is fused</span>
+valid_matches <span style="color:#666">=</span> []
+<span style="color:#a2f;font-weight:bold">for</span> match <span style="color:#a2f;font-weight:bold">in</span> matches:
+    matched_compute_nodes <span style="color:#666">=</span> \
+        [gn <span style="color:#a2f;font-weight:bold">for</span> pn, gn <span style="color:#a2f;font-weight:bold">in</span> match<span style="color:#666">.</span>nodes_map<span style="color:#666">.</span>items() <span style="color:#a2f;font-weight:bold">if</span> pn<span style="color:#666">.</span>op <span style="color:#a2f;font-weight:bold">not</span> <span style="color:#a2f;font-weight:bold">in</span> {<span style="color:#b44">&#34;placeholder&#34;</span>, <span style="color:#b44">&#34;output&#34;</span>}]
+    <span style="color:#a2f;font-weight:bold">if</span> validate_partition(matched_compute_nodes):
+        valid_matches<span style="color:#666">.</span>append(match)
+<span style="color:#a2f;font-weight:bold">if</span> <span style="color:#a2f">len</span>(valid_matches) <span style="color:#666">!=</span> <span style="color:#a2f">len</span>(matches):
+    logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Filtered out </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44"> matches because \</span>
+                    matched subgraph would form a cycle <span style="color:#a2f;font-weight:bold">if</span> fused<span style="color:#b44">&#34;, len(matches) - len(valid_matches))</span>
+
+<span style="color:#a2f;font-weight:bold">if</span> self<span style="color:#666">.</span>remove_overlapping_matches:
+    before <span style="color:#666">=</span> <span style="color:#a2f">len</span>(valid_matches)
+    matches <span style="color:#666">=</span> self<span style="color:#666">.</span>_remove_overlapping_matches(valid_matches)
+    after <span style="color:#666">=</span> <span style="color:#a2f">len</span>(matches)
+    <span style="color:#a2f;font-weight:bold">if</span> before <span style="color:#666">!=</span> after:
+        logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Filtered out </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44"> matches because matched subgraphs are overlapping&#34;</span>, before <span style="color:#666">-</span> after)
+
+logger<span style="color:#666">.</span>info(<span style="color:#b44">&#34;Matches returned: </span><span style="color:#b68;font-weight:bold">%s</span><span style="color:#b44">&#34;</span>, matches)
+
+<span style="color:#a2f;font-weight:bold">return</span> matches
+</code></pre></div>  </details>
+</li>
+</ul>
+<h3 id="c-level-core-passes-implementation">C++ level core passes implementation</h3>
+<ul>
+<li>
+<p><code>torch-to-mhlo-pipeline</code></p>
+  <details><summary>createTorchToMhloPipeline</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> mlir<span style="color:#666">::</span>torch_frontend<span style="color:#666">::</span>createTorchToMhloPipeline(OpPassManager <span style="color:#666">&amp;</span>pm) {
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createConvertTorchToCcl());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createConvertTorchToCustomCall());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createConvertTorchToStablehloExt());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+    createConvertTorchToStablehloPass(<span style="color:#a2f">false</span>, <span style="color:#a2f">false</span>));
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createConvertTorchToArithPass());
+
+<span style="color:#080;font-style:italic">// Clean up any non-canonical code introduced above..
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+<span style="color:#080;font-style:italic">// The resolution of `dim` ops tends to create identical ops. CSE them.
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCSEPass());
+
+<span style="color:#080;font-style:italic">// Clean up any non-canonical code introduced above..
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+<span style="color:#080;font-style:italic">// The resolution of `dim` ops tends to create identical ops. CSE them.
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCSEPass());
+
+<span style="color:#080;font-style:italic">// Finish the type conversion from `torch` types to the types of the
+</span><span style="color:#080;font-style:italic">// MHLO backend contract.
+</span><span style="color:#080;font-style:italic"></span>pm.addPass(TorchConversion<span style="color:#666">::</span>createFuncBackendTypeConversionPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+    TorchConversion<span style="color:#666">::</span>createFinalizingBackendTypeConversionPass());
+
+<span style="color:#080;font-style:italic">// Verify that we have lowered to the form that Stablehlo backends
+</span><span style="color:#080;font-style:italic">// expect. This fails compilation (signalPassFailure) if the IR is not in the
+</span><span style="color:#080;font-style:italic">// correct form.
+</span><span style="color:#080;font-style:italic"></span>pm.addPass(TorchConversion<span style="color:#666">::</span>createVerifyStablehloBackendContractPass());
+<span style="color:#080;font-style:italic">// Perform additional canonicalization, which is not suitable in byteir
+</span><span style="color:#080;font-style:italic">// pipeline.
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizeExtPass());
+}
+
+<span style="color:#0b0;font-weight:bold">void</span> mlir<span style="color:#666">::</span>torch_frontend<span style="color:#666">::</span>createTorchFunctionToTorchPipeline(
+    OpPassManager <span style="color:#666">&amp;</span>pm, <span style="color:#a2f;font-weight:bold">const</span> Torch<span style="color:#666">::</span>TorchLoweringPipelineOptions <span style="color:#666">&amp;</span>options) {
+<span style="color:#080;font-style:italic">// remove useless ops
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createEliminateUselessOpPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+
+<span style="color:#080;font-style:italic">// Unpack return values
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createUnpackPublicFunctionReturnPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+
+pm.addPass(Torch<span style="color:#666">::</span>createAdjustCallingConventionsPass());
+
+<span style="color:#080;font-style:italic">// Rewrite custum ops to Torch.CustomOp
+</span><span style="color:#080;font-style:italic"></span>pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createRewriteCustomOp());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizerPass());
+
+<span style="color:#080;font-style:italic">// Fuse Torch Ops
+</span><span style="color:#080;font-style:italic"></span>pm.addPass(createCSEPass());
+pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createFuseOpOnTorch());
+
+pm.addPass(Torch<span style="color:#666">::</span>createLowerToBackendContractPass(
+    options.maxIterations, options.decompose, options.backendLegalOps,
+    options.extraLibrary));
+}
+</code></pre></div>  </details>
+<p>几个特殊的pass:</p>
+</li>
+<li>
+<p>Conversion</p>
+<ul>
+<li><code>createConvertTorchToCcl</code>
+Convert torch communication ops to byteir ccl dialect. byteir 扩展了 torch dialect，添加了 C10xxx 通信算子，并在byteir中设计了 ccl dialect 用于表达 collective ops。几乎是在一一映射到ccl上。</li>
+</ul>
+  <details><summary>ConvertC10dFunctionalAllReduceOp</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#a2f;font-weight:bold">class</span> <span style="color:#00f">ConvertC10dFunctionalAllReduceOp</span>
+    <span style="color:#666">:</span> <span style="color:#a2f;font-weight:bold">public</span> OpConversionPattern<span style="color:#666">&lt;</span>C10dFunctionalAllReduceOp<span style="color:#666">&gt;</span> {
+<span style="color:#a2f;font-weight:bold">public</span><span style="color:#666">:</span>
+<span style="color:#a2f;font-weight:bold">using</span> OpConversionPattern<span style="color:#666">&lt;</span>C10dFunctionalAllReduceOp<span style="color:#666">&gt;::</span>OpConversionPattern;
+
+LogicalResult
+<span style="color:#00a000">matchAndRewrite</span>(C10dFunctionalAllReduceOp op, OpAdaptor adaptor,
+                ConversionPatternRewriter <span style="color:#666">&amp;</span>rewriter) <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">override</span> {
+    Value input <span style="color:#666">=</span> adaptor.getSelf();
+    <span style="color:#a2f;font-weight:bold">auto</span> outType <span style="color:#666">=</span> getTypeConverter()<span style="color:#666">-&gt;</span>convertType(op.getResult().getType());
+
+    std<span style="color:#666">::</span>string reduceOp, tag;
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>matchPattern(op.getReduceOp(), m_TorchConstantStr(reduceOp))) {
+    <span style="color:#a2f;font-weight:bold">return</span> rewriter.notifyMatchFailure(op, <span style="color:#b44">&#34;unsupported value of reduceOp&#34;</span>);
+    }
+    <span style="color:#080;font-style:italic">// make sure reduce op is lowercase string.
+</span><span style="color:#080;font-style:italic"></span>    std<span style="color:#666">::</span>transform(reduceOp.begin(), reduceOp.end(), reduceOp.begin(),
+                [](<span style="color:#0b0;font-weight:bold">unsigned</span> <span style="color:#0b0;font-weight:bold">char</span> c) { <span style="color:#a2f;font-weight:bold">return</span> std<span style="color:#666">::</span>tolower(c); });
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>matchPattern(op.getTag(), m_TorchConstantStr(tag))) {
+    <span style="color:#a2f;font-weight:bold">return</span> rewriter.notifyMatchFailure(op, <span style="color:#b44">&#34;unsupported value of tag&#34;</span>);
+    }
+    llvm<span style="color:#666">::</span>SmallVector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">int64_t</span><span style="color:#666">&gt;</span> ranks;
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>matchPattern(op.getRanks(), m_TorchListOfConstantInts(ranks))) {
+    <span style="color:#a2f;font-weight:bold">return</span> rewriter.notifyMatchFailure(op, <span style="color:#b44">&#34;unsupported value of ranks&#34;</span>);
+    }
+    <span style="color:#0b0;font-weight:bold">int64_t</span> groupSize;
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>matchPattern(op.getGroupSize(), m_TorchConstantInt(<span style="color:#666">&amp;</span>groupSize))) {
+    <span style="color:#a2f;font-weight:bold">return</span> rewriter.notifyMatchFailure(op, <span style="color:#b44">&#34;unsupported value of group_size&#34;</span>);
+    }
+
+    <span style="color:#a2f;font-weight:bold">auto</span> cclAllReduceOp <span style="color:#666">=</span> rewriter.create<span style="color:#666">&lt;</span>ccl<span style="color:#666">::</span>AllReduceOp<span style="color:#666">&gt;</span>(
+        op<span style="color:#666">-&gt;</span>getLoc(), input, Value(),
+        <span style="color:#080;font-style:italic">/*synchronous=*/</span>rewriter.getBoolAttr(<span style="color:#a2f">false</span>),
+        rewriter.getStringAttr(reduceOp),
+        rewriter.getArrayAttr(
+            ArrayRef<span style="color:#666">&lt;</span>Attribute<span style="color:#666">&gt;</span>{rewriter.getI64ArrayAttr(ranks)}),
+        <span style="color:#080;font-style:italic">/*unique_id=*/</span><span style="color:#a2f;font-weight:bold">nullptr</span>);
+    rewriter.replaceOp(op, cclAllReduceOp.getResult());
+    <span style="color:#a2f;font-weight:bold">return</span> success();
+}
+};
+</code></pre></div>  </details>
+<ul>
+<li><code>createConvertTorchToCustomCall</code>
+粗略的对应前面 bridge 中的 <em>custom opset</em>，将 norm，softmax，flashattn 等算子直接 convert 到 stablehlo 的 custom call。custom call 并不会真的涉及到 optimized implementation，仅仅是构造 input/output 并透传op（具体的算法实现放在compiler中）。</li>
+<li><code>createConvertTorchToStablehloExt</code>
+Convert torch ops to stablehlo extension. 如 <code>Aten_IndexPutImplOp</code>,<code>AtenPowScalarOp</code></li>
+<li><code>createConvertTorchToStablehloPass</code></li>
+</ul>
+  <details><summary>torch to stablehlo</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">torch_to_stablehlo<span style="color:#666">::</span>TorchToStablehloOptions options{
+enableStaticShape, enableI32Index <span style="color:#666">?</span> <span style="color:#666">32u</span> <span style="color:#666">:</span> <span style="color:#666">64u</span>};
+torch_to_stablehlo<span style="color:#666">::</span>populateBasicOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+torch_to_stablehlo<span style="color:#666">::</span>populateViewLikeOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+torch_to_stablehlo<span style="color:#666">::</span>populateGatherScatterOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+torch_to_stablehlo<span style="color:#666">::</span>populateReductionOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+torch_to_stablehlo<span style="color:#666">::</span>populateLinearOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+torch_to_stablehlo<span style="color:#666">::</span>populatePoolingOpPatternsAndLegality(
+    typeConverter, patterns, target, options);
+</code></pre></div></li>
+<li>
+<p>Transforms</p>
+<ul>
+<li><code>createCanonicalizeExtPass</code>
+为 <code>stablehlo::CustomCallOp</code> 实现 dec，这个功能应该最好是放在这个op的 canonicalize 方法中。逻辑很简单，遍历所有op，如果没有 use，且满足<code>wouldOpBeTriviallyDead</code>（upstream的实现，分析是否有side-effect） 或是custom call，则删除。</li>
+<li><code>createRewriteCustomOp</code>
+将byteir自定义的 torch ops 转换为 torch custom ops，而torch custom op 会被转换为 stable custom call.</li>
+<li><code>createEliminateUselessOpPass</code></li>
+<li><code>createFuseOpOnTorch</code>
+在torch dialect中针对特殊 pattern 做了 DAG rewrite，用了<a href="https://mlir.llvm.org/docs/DeclarativeRewrites/#" target="_blank" rel="noopener">DRR</a>这种方式去写td。byteir 做了两个 pattern的优化：</li>
+</ul>
+  <details><summary>fuse on torch</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">def <span style="color:#a0a000">TorchGeluTanhPattern</span> : Pat<span style="color:#666">&lt;</span>
+    (<span style="color:#a0a000">Torch_AtenMulTensorOp</span>:<span style="">$</span>output
+        (Torch_AtenMulTensorOp
+            <span style="">$</span>input,
+            (Torch_NonValueTensorLiteralOp <span style="">$</span>const_5)
+        ),
+        (Torch_AtenAddTensorOp
+            (Torch_AtenTanhOp
+                (Torch_AtenMulTensorOp
+                    (Torch_AtenAddTensorOp
+                        <span style="">$</span>input,
+                        (Torch_AtenMulTensorOp
+                            (Torch_AtenPowTensorScalarOp
+                                <span style="">$</span>input,
+                                (Torch_ConstantIntOp <span style="">$</span>int3)
+                            ),
+                            (Torch_NonValueTensorLiteralOp <span style="">$</span>const_4)
+                        ),
+                        (Torch_ConstantIntOp <span style="">$</span>int1_1)
+                    ),
+                    (Torch_NonValueTensorLiteralOp <span style="">$</span>const_7)
+                )
+            ),
+            (Torch_NonValueTensorLiteralOp <span style="">$</span>const_1),
+            (Torch_ConstantIntOp <span style="">$</span>int1)
+        )
+    ),
+    (createGeluTanh <span style="">$</span>output, <span style="">$</span>input),
+    [(OneIntegerAttr <span style="">$</span>int1), (OneIntegerAttr <span style="">$</span>int1_1), (ThreeIntegerAttr <span style="">$</span>int3),
+    (Constraint<span style="color:#666">&lt;</span>CPred<span style="color:#666">&lt;</span><span style="color:#b44">&#34;$0.getSplatValue&lt;APInt&gt;() == 1&#34;</span><span style="color:#666">&gt;</span>, <span style="color:#b44">&#34;&#34;</span><span style="color:#666">&gt;</span> <span style="">$</span>const_1),
+    (Constraint<span style="color:#666">&lt;</span>CPred<span style="color:#666">&lt;</span><span style="color:#b44">&#34;isSplatCloseToValue($0.cast&lt;DenseFPElementsAttr&gt;(), 0.5)&#34;</span><span style="color:#666">&gt;</span>, <span style="color:#b44">&#34;&#34;</span><span style="color:#666">&gt;</span> <span style="">$</span>const_5),
+    (Constraint<span style="color:#666">&lt;</span>CPred<span style="color:#666">&lt;</span><span style="color:#b44">&#34;isSplatCloseToValue($0.cast&lt;DenseFPElementsAttr&gt;(), 4.471500e-02, 0.0001)&#34;</span><span style="color:#666">&gt;</span>, <span style="color:#b44">&#34;&#34;</span><span style="color:#666">&gt;</span> <span style="">$</span>const_4),
+    (Constraint<span style="color:#666">&lt;</span>CPred<span style="color:#666">&lt;</span><span style="color:#b44">&#34;isSplatCloseToValue($0.cast&lt;DenseFPElementsAttr&gt;(), 0.797884583, 0.0001)&#34;</span><span style="color:#666">&gt;</span>, <span style="color:#b44">&#34;&#34;</span><span style="color:#666">&gt;</span> <span style="">$</span>const_7)]
+<span style="color:#666">&gt;</span>;
+
+def <span style="color:#a0a000">createLayerNorm</span> : NativeCodeCall<span style="color:#666">&lt;</span><span style="color:#b44">&#34;createLayerNorm($_builder, $_loc, $0, $1, $2, $3, $4, $5, $6)&#34;</span><span style="color:#666">&gt;</span>;
+
+def <span style="color:#a0a000">TorchLayerNormPattern</span> : Pat<span style="color:#666">&lt;</span>
+    (<span style="color:#a0a000">Torch_AtenAddTensorOp</span>:<span style="">$</span>output
+        (Torch_AtenDivTensorOp
+            (Torch_AtenMulTensorOp
+                <span style="">$</span>weight,
+                (Torch_AtenSubTensorOp
+                    <span style="">$</span>input,
+                    (Torch_AtenMeanDimOp
+                        <span style="">$</span>input,
+                        <span style="">$</span>list,
+                        (Torch_ConstantBoolOp <span style="">$</span>true_value),
+                        (Torch_ConstantNoneOp)
+                    ),
+                    (Torch_ConstantIntOp <span style="">$</span>int1_2)
+                )
+            ),
+            (Torch_AtenAddTensorOp
+                (Torch_AtenStdDimOp
+                    <span style="">$</span>input,
+                    <span style="">$</span>list,
+                    (<span style="color:#a0a000">Torch_ConstantBoolOp</span>:<span style="">$</span>false_op <span style="">$</span>false_value),
+                    (Torch_ConstantBoolOp <span style="">$</span>true_value_1)
+                ),
+                (Torch_NonValueTensorLiteralOp <span style="">$</span>epsilon),
+                (Torch_ConstantIntOp <span style="">$</span>int1_1)
+            )
+        ),
+        <span style="">$</span>bias,
+        (Torch_ConstantIntOp <span style="">$</span>int1)
+    ),
+    (createLayerNorm <span style="">$</span>output, <span style="">$</span>input, <span style="">$</span>list, <span style="">$</span>weight, <span style="">$</span>bias, (NativeCodeCall<span style="color:#666">&lt;</span><span style="color:#b44">&#34;createLayerNormEpsilon($_builder, $_loc, $0)&#34;</span><span style="color:#666">&gt;</span> <span style="">$</span>epsilon), <span style="">$</span>false_op),
+    [(TrueAttr <span style="">$</span>true_value), (TrueAttr <span style="">$</span>true_value_1), (FalseAttr <span style="">$</span>false_value),
+    (OneIntegerAttr <span style="">$</span>int1), (OneIntegerAttr <span style="">$</span>int1_1), (OneIntegerAttr <span style="">$</span>int1_2)]
+<span style="color:#666">&gt;</span>;
+</code></pre></div>  </details>
+<p>第一个 pattern rewrite 的 source pattern 对应的示例如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#666">%</span>mul_0 <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.mul&#34;</span>(<span style="color:#666">%</span>input, <span style="color:#666">%</span>const_0<span style="color:#666">.5</span>)
+
+<span style="color:#666">%</span>pow <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.pow&#34;</span>(<span style="color:#666">%</span>input, <span style="color:#666">%</span>const_3)
+<span style="color:#666">%</span>mul_2 <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.mul&#34;</span>(<span style="color:#666">%</span>pow, <span style="color:#666">%</span>const_4<span style="color:#666">.4715e-02</span>)
+<span style="color:#666">%</span>add_1 <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.add&#34;</span>(<span style="color:#666">%</span>input, <span style="color:#666">%</span>mul_2, <span style="color:#666">%</span>const_1)
+<span style="color:#666">%</span>mul_1 <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.mul&#34;</span>(<span style="color:#666">%</span>add_1, <span style="color:#666">%</span>const_0<span style="color:#666">.797884583</span>)
+<span style="color:#666">%</span>tanh <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.tanh&#34;</span>(<span style="color:#666">%</span>mul_1)
+<span style="color:#666">%</span>add_0 <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.add&#34;</span>(<span style="color:#666">%</span>tanh, <span style="color:#666">%</span>const_1<span style="color:#666">.0</span>, <span style="color:#666">%</span>const_1)
+  
+<span style="color:#666">%</span>mul <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.mul&#34;</span>(<span style="color:#666">%</span>mul_0, <span style="color:#666">%</span>add_0)
+</code></pre></div><p>上面的计算约等于:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#666">%</span>result <span style="color:#666">=</span> <span style="color:#b44">&#34;aten.gelu&#34;</span>(<span style="color:#666">%</span>input, <span style="color:#666">%</span>aten_str<span style="color:#666">&lt;</span><span style="color:#b44">&#34;tanh&#34;</span><span style="color:#666">&gt;</span>)
+</code></pre></div><p>比较好奇是怎么推导出来的.</p>
+<ul>
+<li><code>createUnpackPublicFunctionReturnPass</code></li>
+</ul>
+</li>
+<li>
+<p>stablehlo
+<a href="https://github.com/openxla/stablehlo/blob/main/docs/spec.md" target="_blank" rel="noopener">Spec</a>
+op set完备性比较好，设计了collective communication ops，也有 <a href="https://github.com/openxla/stablehlo/blob/main/docs/spec.md#custom_call" target="_blank" rel="noopener">custom_call</a>提供扩展机制。
+<a href="https://discourse.llvm.org/t/sunsetting-the-mlir-hlo-repository/70536" target="_blank" rel="noopener">Replace mlir-hlo with stablehlo</a></p>
+</li>
+</ul>
+</details>
+<hr>
+<h1 id="compiler">Compiler</h1>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fallback" data-lang="fallback">compiler/
+├── cmake
+├── dialects   | ace 和 ccl dialect 的定义，单独放在外面而非 include 路径下，方便给 frontend 依赖
+├── include    |
+├── lib        |
+├── python     |
+├── tools      |
+</code></pre></div><h2 id="dialect-extension">Dialect extension</h2>
+<details><summary></summary>
+<p>byteir 基于 upstream 的 dialect 进行了扩展，如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">compiler/include/byteir/Dialect/
+├── Ace
+├── Affine
+├── Byre
+├── CMakeLists.txt
+├── Cat
+├── Ccl
+├── GPU
+├── Lace
+├── Linalg
+├── MemRef
+├── SCF
+├── Shape
+├── Tensor
+├── Transform
+├── Vector
+└── mhlo
+</code></pre></div><p>其中 Ace 和 Ccl 的定义放在外层 compiler 路径下。
+Affine 等路径下是对upstream transforms pass的扩展，其他dialect 如：</p>
+<ul>
+<li>Ace 是对 mhlo ops 的扩展</li>
+<li>Byre 是 byteir runtime 的扩展</li>
+<li>Cat 会从 mhlo lower 一部分 ops（如 BMM） 过来，不清楚为什么设计这个 dialect，看着像是会fuse之后 替换成 AIT。</li>
+<li>Ccl Dialect works as a communication collective language in MLIR. 如 Linalg dialect 经过 shared distributed strategy 后引入 ccl 中的 collective communication 算子。</li>
+<li>Lace 是对 lhlo 的补充</li>
+</ul>
+<h3 id="ace">Ace</h3>
+<h3 id="ccl">Ccl</h3>
+<h3 id="cat">Cat</h3>
+<h3 id="lace">Lace</h3>
+<h3 id="byre">Byre</h3>
+<p>Byteir runtime（调度 kernel/func）的op，几个关键 op 如下：</p>
+<ul>
+<li>Byre::ComputeOp. 表示执行一个 kernel</li>
+<li>Byre::ComputeShapeOp. 执行一个 shape 计算的函数，因为只涉及到tensor的 meta info，所以可以提前计算</li>
+<li>Byre::CopyOp. 节点内内存搬移，因为 memref 可以带 memory space 信息，所以可以表达 h2d/d2h 等内存搬移</li>
+<li>Byre::GroupCopyOp. 分布式节点间数据搬移</li>
+<li>Byre::CustomOp. 表示 lib call</li>
+</ul>
+<p>为了表达异步计算语义，byre 中定义了 <code>byre::AsyncTokenType</code>。因为不同后端device有各自的 async token，byre应该是做了一层抽象，最终会lower到device对应的dialect上。</p>
+<p>Byre 实现了 <code>serialization</code> 机制。</p>
+<h3 id="transforms-ext">Transforms ext</h3>
+</details>
+<h2 id="compilation-workflow">compilation workflow</h2>
+<p><code>byteir</code> 开源版本封装了两种 compile flow，分别是 <code>compile_cuda</code>和 <code>compile_cuda_with_ait</code>，都是给 cuda 后端做codegen。前者是典型的从 <code>linalg</code> -&gt; <code>scf</code> -&gt; <code>gpu</code> -&gt; <code>nvvm</code> -&gt; <code>ptx</code> 的 MLIR based ai compiler compilation flow。后者会将一部分计算图转到 <code>CAT</code> dialect，然后用 <code>ait_builder</code> 替换成 AIT 的实现，其余计算图仍然走 <code>nvvm</code> 的workflow。</p>
+<p><code>byteir.compile</code> 将 compilation 产物落盘在指定的 path 下面，似乎没有看到在这一层做 compilation cache。
+从 <code>mlir.cat</code> 到 <code>AIT</code> 的 translation 的实现在 ：
+<code>compiler/python/byteir/dialects/cat/ir_translator/backend/ait_registry.py</code>
+路径下，byteir 为 ait backend 实现了一个建议的 match and rewrite 机制：
+<code>compiler/python/byteir/dialects/cat/ir_translator/translator.py</code></p>
+<h3 id="compile_cuda"><code>compile_cuda</code></h3>
+<ul>
+<li><code>hlo-opt{outline-single-elemwise-op}</code></li>
+<li><code>linalg-tensor-opt</code></li>
+<li><code>byre-tensor-opt</code></li>
+<li><code>byteir-bufferize-opt</code></li>
+<li><code>linalg-memref-opt</code></li>
+<li><code>scf-opt</code></li>
+<li><code>gpu-opt</code></li>
+<li><code>remove-func-body{anchor-attr=__byteir_elementwise_fusion__}</code></li>
+<li><code>inline</code></li>
+<li><code>gpu-launch-func-to-byre</code></li>
+<li><code>set-op-space</code></li>
+<li><code>set-arg-space</code></li>
+<li><code>byre-opt</code></li>
+<li><code>nvvm-codegen</code></li>
+<li><code>translate_to_ptx</code></li>
+<li><code>byre-host</code></li>
+</ul>
+<h3 id="compile_cuda_with_ait"><code>compile_cuda_with_ait</code></h3>
+<ul>
+<li><code>IRProcessor.preprocess_pass</code></li>
+<li><code>IRProcessor.cat_opt_pass</code></li>
+<li><code>IRProcessor.hlo_opt_pass</code></li>
+<li><code>IRProcessor.ait_opt_pass</code></li>
+<li><code>linalg-tensor-opt</code></li>
+<li><code>byre-tensor-opt</code></li>
+<li><code>byteir-bufferize-opt</code></li>
+<li><code>linalg-memref-opt</code></li>
+<li><code>scf-opt</code></li>
+<li><code>gpu-opt</code></li>
+<li><code>remove-func-body</code></li>
+<li><code>inline</code></li>
+<li><code>gpu-launch-func-to-byre</code></li>
+<li><code>set-op-space</code></li>
+<li><code>set-arg-space</code></li>
+<li><code>byre-opt</code></li>
+<li><code>nvvm-codegen</code></li>
+<li><code>translate_to_ptx</code></li>
+<li><code>byre-host</code></li>
+</ul>
+<h3 id="pipeline-analysis">pipeline analysis</h3>
+<p>decl path: <code>compiler/include/byteir/Pipelines/*.h</code>, <code>compiler/include/byteir/Transforms/Passes.td</code>
+def  path: <code>compiler/lib/Pipelines/*LinalgTensorOpt*.cpp</code></p>
+<details><summary>hlo-opt</summary>
+<p>func: <code>createHloOptPipeline</code></p>
+<p>在 hlo dialect 做图优化，包含op折叠和op融合两个部分。
+op折叠是根据一些patern将op替换为效率更高的组合：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// generic folding
+</span><span style="color:#080;font-style:italic"></span>  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createHloFolderPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createHloFolderPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createHloTransposeDotToDotGeneralPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createReduceFusionPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createReshapeGatherPass());
+  pm.addPass(createConvertOpToCustomCallPass());
+</code></pre></div><p>op融合则是在hlo中将ops融合到mhlo::FusionOp中：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++">  <span style="color:#080;font-style:italic">// add fusion patterns
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#a2f;font-weight:bold">if</span> (target <span style="color:#666">==</span> <span style="color:#b44">&#34;CPU&#34;</span>) {
+    addCPUHloFusionPatterns(pm, entryFunc);
+  } <span style="color:#a2f;font-weight:bold">else</span> {
+    addGenericHloFusionPatterns(pm, entryFunc, outlineSingleElemwiseOp,
+                                outlineCatOp, aggressiveCatFusion);
+  }
+</code></pre></div><p>byteir对hlo op融合抽象出了通用模板，不同类型的融合只需要实现各自的特殊逻辑。</p>
+<p>==TODO== deep into this pipeline</p>
+</details>
+<details><summary>linalg-tensor-op</summary>
+<p>func: <code>createLinalgTensorOptPipeline</code></p>
+<ul>
+<li>
+<p>convert hol to linalg</p>
+</li>
+<li>
+<p>enhance linalg element-wise fusion</p>
+</li>
+<li>
+<p>element-wise kernel codegen</p>
+</li>
+<li>
+<p>reduce kernel codegen</p>
+<details><summary>passes</summary>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">addGenericLinalgPasses</span>(OpPassManager <span style="color:#666">&amp;</span>pm) {
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+      createHloFusionToLinalgPass(getByteIRElementwiseFusionAttrName()));
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+      createHloFusionToLinalgPass(getByteIRReductionFusionAttrName()));
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createUnrealizedCastToLinalgPass());
+  pm.addPass(createLinalgElementwiseFusionExtPass(
+      <span style="color:#080;font-style:italic">/*enableSharedInput*/</span> <span style="color:#a2f">true</span>, <span style="color:#080;font-style:italic">/*enableDiffShapes*/</span> <span style="color:#a2f">false</span>));
+  pm.addPass(createCSEPass());
+  { <span style="color:#080;font-style:italic">// elementwise codegen
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">auto</span> elementwiseAnchor <span style="color:#666">=</span> getByteIRElementwiseFusionAttrName().str();
+    GPUTileElementwiseOptions options;
+    options.funcAnchor <span style="color:#666">=</span> elementwiseAnchor;
+    <span style="color:#080;font-style:italic">// set to 1 for fully fusion &amp; unroll, and all tiled loops will be coalesced
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// and mapping to LinearIdx.x in later pipeline
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// FIXME: set to real blockSize and mapping tiled loops to the corresponding
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#080;font-style:italic">// parallel dims
+</span><span style="color:#080;font-style:italic"></span>    options.blockSize <span style="color:#666">=</span> <span style="color:#666">1</span>;
+    options.warpSize <span style="color:#666">=</span> <span style="color:#666">32</span>;
+    createGPUTileElementwiseTransform(pm, options);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(createCanonicalizerPass());
+      anchoredPM.addPass(createLinalgFoldUnitExtentDimsPass());
+      anchoredPM.addPass(createLinalgElementwiseFusionExtPass(
+          <span style="color:#080;font-style:italic">/*enableSharedInput*/</span> <span style="color:#a2f">true</span>, <span style="color:#080;font-style:italic">/*enableDiffShapes*/</span> <span style="color:#a2f">false</span>));
+      anchoredPM.addPass(createCSEPass());
+      anchoredPM.addPass(createCanonicalizerPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(elementwiseAnchor, anchoredPM));
+    }
+  }
+  { <span style="color:#080;font-style:italic">// reduction codegen
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">auto</span> reductionAnchor <span style="color:#666">=</span> getByteIRReductionFusionAttrName().str();
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(
+          createLinalgCollapseLoops(utils<span style="color:#666">::</span>IteratorType<span style="color:#666">::</span>reduction));
+      anchoredPM.addPass(
+          createLinalgCollapseLoops(utils<span style="color:#666">::</span>IteratorType<span style="color:#666">::</span>parallel));
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(reductionAnchor, anchoredPM));
+    }
+
+    GPUSplitGridReductionOptions splitGridRedOptions;
+    splitGridRedOptions.funcAnchor <span style="color:#666">=</span> reductionAnchor;
+    createGPUSplitGridReductionTransform(pm, splitGridRedOptions);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    pm.addPass(createCanonicalizerPass());
+
+    GPUTileGridReductionOptions tileGridRedOptions;
+    tileGridRedOptions.funcAnchor <span style="color:#666">=</span> reductionAnchor;
+    tileGridRedOptions.blockSize <span style="color:#666">=</span> <span style="color:#666">512</span>;
+    createGPUTileGridReductionTransform(pm, tileGridRedOptions);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(createLinalgFoldUnitExtentDimsPass());
+      anchoredPM.addPass(createCanonicalizerPass());
+      anchoredPM.addPass(createCSEPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(reductionAnchor, anchoredPM));
+    }
+
+    GPUSplitBlockReductionOptions splitBlockRedOptions;
+    splitBlockRedOptions.funcAnchor <span style="color:#666">=</span> reductionAnchor;
+    splitBlockRedOptions.splitFactor <span style="color:#666">=</span> <span style="color:#666">16</span>;
+    createGPUSplitBlockReductionTransform(pm, splitBlockRedOptions);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    pm.addPass(createCanonicalizerPass());
+
+    GPUTileBlockReductionOptions tileBlockRedOptions;
+    tileBlockRedOptions.funcAnchor <span style="color:#666">=</span> reductionAnchor;
+    tileBlockRedOptions.blockSize <span style="color:#666">=</span> <span style="color:#666">512</span>;
+    createGPUTileBlockReductionTransform(pm, tileBlockRedOptions);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(createLinalgFoldUnitExtentDimsPass());
+      anchoredPM.addPass(createCanonicalizerPass());
+      anchoredPM.addPass(createCSEPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(reductionAnchor, anchoredPM));
+    }
+
+    GPUTileThreadReductionOptions tileThreadRedOptions;
+    tileThreadRedOptions.funcAnchor <span style="color:#666">=</span> reductionAnchor;
+    createGPUTileThreadReductionTransform(pm, tileThreadRedOptions);
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(createLinalgFoldUnitExtentDimsPass());
+      anchoredPM.addPass(createCanonicalizerPass());
+      anchoredPM.addPass(createCSEPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(reductionAnchor, anchoredPM));
+    }
+
+    pm.addPass(createDetensorizeTransformInsertionPass(reductionAnchor));
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    pm.addPass(createCanonicalizeExtPass());
+    pm.addPass(createRewriteInDPSTransformInsertionPass(reductionAnchor));
+    pm.addPass(createTransformDialectInterpreter(<span style="color:#a2f">true</span>));
+    pm.addPass(createCanonicalizerPass());
+    {
+      OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+      anchoredPM.addPass(createTensorPadSpecializationPass());
+      anchoredPM.addPass(bufferization<span style="color:#666">::</span>createEmptyTensorEliminationPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+          createAnchoredPipelinePass(reductionAnchor, anchoredPM));
+    }
+  }
+}
+</code></pre></div></details>
+</li>
+</ul>
+<p>==TODO== deep into this pipeline as this pipeline enhance upstream linalg with fusion, tiling and so on.</p>
+</details>
+<details><summary>byre-tensor-opt</summary>
+<p>func: <code>createByreTensorOptPipeline</code></p>
+<ul>
+<li>replace func call to byteir runtime(byre) op(<code>byre::ComputeOp</code>)</li>
+<li>replace <code>mhlo::CustomCallOp</code> to <code>byre::CustomOp</code></li>
+<li>convert some hlo ops to byre, do not use compiler but runtime implementation.</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> mlir<span style="color:#666">::</span>populateHloToByreTensorPattern(
+    RewritePatternSet <span style="color:#666">&amp;</span>patterns,
+    <span style="color:#a2f;font-weight:bold">const</span> llvm<span style="color:#666">::</span>StringMap<span style="color:#666">&lt;</span>llvm<span style="color:#666">::</span>StringRef<span style="color:#666">&gt;</span> <span style="color:#666">&amp;</span>supportMap, <span style="color:#0b0;font-weight:bold">bool</span> appendArgTypes) {
+
+  patterns.add<span style="color:#666">&lt;</span>ConvertToByrePattern<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>AddOp<span style="color:#666">&gt;</span>,
+               ConvertToByrePattern<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>ConvertOp<span style="color:#666">&gt;</span>,
+               ConvertToByrePattern<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>TransposeOp, <span style="color:#080;font-style:italic">/*keepAttrs*/</span> <span style="color:#a2f">true</span><span style="color:#666">&gt;&gt;</span>(
+      patterns.getContext(), supportMap, appendArgTypes);
+
+  patterns.add<span style="color:#666">&lt;</span>ConvertCustomCallOpToByrePattern<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>CustomCallOp<span style="color:#666">&gt;</span>,
+               ConvertCustomCallOpToByrePattern<span style="color:#666">&lt;</span>ace<span style="color:#666">::</span>CustomCallOp<span style="color:#666">&gt;</span>,
+               ConvertGatherOpToByrePattern, ConvertScatterOpToByrePattern,
+               ConvertDotOpToByrePattern, ConvertDotGeneralOpToByrePattern,
+               ConvertConvOpToByrePattern, ConvertReduceOpToByrePattern,
+               ConvertReduceWindowOpToByrePattern,
+               ConvertSelectAndScatterOpToByrePattern<span style="color:#666">&gt;</span>(patterns.getContext(),
+                                                       appendArgTypes);
+
+  patterns.add<span style="color:#666">&lt;</span>
+      ConvertConstLikeOp<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>ConstantOp<span style="color:#666">&gt;</span>, ConvertConstLikeOp<span style="color:#666">&lt;</span>ace<span style="color:#666">::</span>ConstOp<span style="color:#666">&gt;</span>,
+      ConvertReshapeOp<span style="color:#666">&lt;</span>mhlo<span style="color:#666">::</span>ReshapeOp<span style="color:#666">&gt;</span>, ConvertReshapeOp<span style="color:#666">&lt;</span>ace<span style="color:#666">::</span>ReshapeOp<span style="color:#666">&gt;</span>,
+      ConvertSliceOp, ConvertConcatenateOp<span style="color:#666">&gt;</span>(patterns.getContext());
+}
+</code></pre></div><div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">createByreTensorOptPipelineImpl</span>(OpPassManager <span style="color:#666">&amp;</span>pm, std<span style="color:#666">::</span>string entryFunc,
+                                     <span style="color:#0b0;font-weight:bold">bool</span> appendArgTypes) {
+  pm.addPass(createFuncTagPass(
+      <span style="color:#080;font-style:italic">/*anchorTag=*/</span><span style="color:#b44">&#34;&#34;</span>,
+      getAttrPlaceholderName(ByreDialect<span style="color:#666">::</span>getEntryPointFunctionAttrName()),
+      entryFunc));
+
+  pm.addPass(createConvertFuncToByreTensorPass(appendArgTypes));
+  pm.addPass(createSymbolDCEPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+      createConvertHloToByreCustomPass(getCudaByreCustomConfig()));
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+      createConvertHloToByreTensorPass(appendArgTypes));
+  pm.addPass(createCanonicalizerPass());
+}
+</code></pre></div></details>
+<details><summary>byteir-bufferize-opt</summary>
+<p>func: <code>createByteIRBufferizeOptPipeline</code></p>
+<ul>
+<li>replace tensor::empty with bufferization::AllocTensorOp</li>
+<li>bufferize tensor to buffer</li>
+<li>使用 <code>memref::createFoldMemRefAliasOpsPass</code> 折叠 对 alias 的 load/store</li>
+<li>消除 <code>memref::CopyOp</code>，即尝试用src代替target，或target替换src，减少copy。</li>
+<li>折叠 subview 的 subview</li>
+</ul>
+<p>byteir 用了 <a href="https://mlir.llvm.org/docs/Bufferization/#what-is-one-shot-bufferize" target="_blank" rel="noopener">oneshot bufferize</a> 去将tensor转换成memref。</p>
+</details>
+<details><summary>linalg-memref-opt</summary>
+<p>func: <code>createLinalgMemrefOptPipeline</code></p>
+<ul>
+<li>replace memref::CopyOp with linalg::generic or func call.</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">addGenericLinalgMemrefOptPasses</span>(OpPassManager <span style="color:#666">&amp;</span>pm) {
+  <span style="color:#080;font-style:italic">// TODO: change getByteIRElementwiseFusionAttrName to GPU specific codegen
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// anchor tag
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createMemrefCopyToLinalgPass(
+      getAttrPlaceholderName(
+          byre<span style="color:#666">::</span>ByreDialect<span style="color:#666">::</span>getEntryPointFunctionAttrName()),
+      getByteIRElementwiseFusionAttrName().str(), <span style="color:#a2f">true</span>));
+  pm.addPass(createMemrefCopyToLinalgPass(
+      getByteIRReductionFusionAttrName().str(), <span style="color:#b44">&#34;&#34;</span>, <span style="color:#a2f">false</span>));
+}
+</code></pre></div></details>
+<details><summary>scf-opt</summary>
+<p>func: <code>createSCFOptPipeline</code></p>
+<ul>
+<li>lower linalg to scf</li>
+<li>fold subview</li>
+<li>合并循环轴</li>
+<li>优化<code>arith::CmpIOp</code>，常量推导</li>
+</ul>
+</details>
+<details><summary>gpu-opt</summary>
+<p>func: <code>createGPUOptPipeline</code></p>
+<ul>
+<li>element-wise 类型优化</li>
+<li>reduction 类型优化，将forall映射到gpu的block和thread</li>
+<li>收集gpu kerenl，将其放入SymbolTable</li>
+</ul>
+</details>
+<details><summary>remove-func-body</summary>
+<p>func: <code>createRemoveFuncBodyPass</code></p>
+</details>
+<details><summary>inline</summary>
+<p>func: <code>mlir::createInlinerPass</code>
+decl: <code>llvm-project/mlir/include/mlir/Transforms/Passes.td</code></p>
+</details>
+<details><summary>gpu-launch-func-to-byre</summary>
+<p>func: <code>createConvertGPULaunchFuncToByrePass</code></p>
+<ul>
+<li>将gpu.launch_func 替换为 byre::computeOp</li>
+</ul>
+</details>
+<details><summary>set-op-space</summary>
+<p>func: <code>createSetOpSpacePass</code></p>
+</details>
+<details><summary>set-arg-space</summary>
+<p>func: <code>createSetArgSpacePass</code></p>
+</details>
+<details><summary>byre-opt</summary>
+<p>func: <code>createByreOptPipeline</code></p>
+<ul>
+<li>func call to byre</li>
+<li>memory planing</li>
+<li>some memref ops to byre</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">createByreOptPipelineImpl</span>(OpPassManager <span style="color:#666">&amp;</span>pm, <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string <span style="color:#666">&amp;</span>entryFunc,
+                               <span style="color:#0b0;font-weight:bold">bool</span> appendArgTypes,
+                               <span style="color:#0b0;font-weight:bold">bool</span> disableMemoryPlanning) {
+  pm.addPass(createFuncTagPass(
+      <span style="color:#080;font-style:italic">/*anchorTag=*/</span><span style="color:#b44">&#34;&#34;</span>,
+      getAttrPlaceholderName(ByreDialect<span style="color:#666">::</span>getEntryPointFunctionAttrName()),
+      entryFunc));
+
+  pm.addPass(createConvertFuncAndCallToByrePass(appendArgTypes));
+
+  <span style="color:#080;font-style:italic">// only applied on entry point function
+</span><span style="color:#080;font-style:italic"></span>  OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+  <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>disableMemoryPlanning) {
+    <span style="color:#080;font-style:italic">// underlying memory of constant op cannot be reused
+</span><span style="color:#080;font-style:italic"></span>    anchoredPM.addPass(createMemoryPlanningPass(<span style="color:#080;font-style:italic">/* alignment */</span> <span style="color:#666">128</span>,
+                                                <span style="color:#080;font-style:italic">/* alloca */</span> <span style="color:#a2f">false</span>,
+                                                <span style="color:#080;font-style:italic">/* memory space */</span> <span style="color:#666">0</span>,
+                                                <span style="color:#080;font-style:italic">/* callback */</span> <span style="color:#a2f;font-weight:bold">nullptr</span>));
+    anchoredPM.addPass(createCanonicalizerPass());
+  }
+  anchoredPM.addPass(createConvertMemrefToByrePass());
+  anchoredPM.addPass(createCanonicalizerPass());
+
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createAnchoredPipelinePass(
+      ByreDialect<span style="color:#666">::</span>getEntryPointFunctionAttrName(), anchoredPM));
+
+  pm.addPass(createCSEPass());
+}
+</code></pre></div></details>
+<details><summary>nvvm-codegen</summary>
+<p>func: <code>createNVVMCodegenPipeline</code></p>
+<ul>
+<li>shm 计算及分配（根据 memref::AllocOp 统计需要多少shm并在最前面分配好内存）</li>
+<li>简化地址计算</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">createNVVMCodegenPipelineImpl</span>(OpPassManager <span style="color:#666">&amp;</span>pm,
+                                   <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">bool</span> <span style="color:#666">&amp;</span>useBarePtrCallConv) {
+  <span style="color:#080;font-style:italic">// TODO add target for supporting different SMs
+</span><span style="color:#080;font-style:italic"></span>  <span style="color:#080;font-style:italic">// TODO use target to decide passes
+</span><span style="color:#080;font-style:italic"></span>  pm.addPass(createCollectGPUKernelPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>gpu<span style="color:#666">::</span>GPUModuleOp<span style="color:#666">&gt;</span>(createShmAllocaToWorkgroupArg());
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createConvertSCFToCFPass());
+  pm.addPass(createExtractAddressComputationPass());
+  pm.addPass(memref<span style="color:#666">::</span>createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createSimplifyLinearizedIndexPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>gpu<span style="color:#666">::</span>GPUModuleOp<span style="color:#666">&gt;</span>(
+      createGPUToNVVMExtPass(useBarePtrCallConv));
+  pm.addPass(createCSEPass());
+  pm.addPass(createReconcileUnrealizedCastsPass());
+  addMultiCSEPipeline(pm, <span style="color:#666">3</span>);
+}
+</code></pre></div></details>
+<details><summary>translate_to_ptx</summary>
+<p>func: <code>translateToPTX</code></p>
+<ul>
+<li>将 ModuleOp 编译成 ptx</li>
+</ul>
+</details>
+<details><summary>byre-host</summary>
+<p>func: <code>createByreHostPipeline</code></p>
+</details>
+<details><summary>IRProcessor.preprocess_pass</summary>
+<p><code>createCatPreprocessPipeline</code></p>
+<p>这些是在mhlo做图优化</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">createCatPreprocessPipelineImpl</span>(OpPassManager <span style="color:#666">&amp;</span>pm,
+                                     <span style="color:#a2f;font-weight:bold">const</span> std<span style="color:#666">::</span>string <span style="color:#666">&amp;</span>convLayout) {
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createFuseBMMDimensionPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createMatmulLayoutTransformPass(<span style="color:#a2f">true</span>, <span style="color:#b44">&#34;rcr&#34;</span>));
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createUnfuseBatchNormPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createHloFolderPass());
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createLayoutTransformationPass(convLayout));
+  pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createHloMoveDownPass());
+  pm.addPass(createCanonicalizeExtPass());
+}
+</code></pre></div></details>
+<details><summary>IRProcessor.cat_opt_pass</summary>
+<p><code>createCatOptPipeline</code></p>
+<ul>
+<li>mhlo to cat</li>
+</ul>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">createCatOptPipelineImpl</span>(OpPassManager <span style="color:#666">&amp;</span>pm, <span style="color:#0b0;font-weight:bold">bool</span> anchor_only,
+                              <span style="color:#0b0;font-weight:bold">bool</span> aggressive_mode) {
+  <span style="color:#a2f;font-weight:bold">if</span> (anchor_only) {
+    OpPassManager anchoredPM(func<span style="color:#666">::</span>FuncOp<span style="color:#666">::</span>getOperationName());
+    anchoredPM.addPass(createFuseMhloToCatPass());
+    anchoredPM.addPass(createCanonicalizeExtPass());
+    anchoredPM.addPass(createMhloToCatPass());
+    anchoredPM.addPass(createCanonicalizeExtPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(
+        createAnchoredPipelinePass(getByteIRCatFusionAttrName(), anchoredPM));
+  } <span style="color:#a2f;font-weight:bold">else</span> {
+    pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createFuseMhloToCatPass());
+    pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizeExtPass());
+    <span style="color:#a2f;font-weight:bold">if</span> (aggressive_mode) {
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createMhloToCatPass());
+      pm.addNestedPass<span style="color:#666">&lt;</span>func<span style="color:#666">::</span>FuncOp<span style="color:#666">&gt;</span>(createCanonicalizeExtPass());
+    }
+  }
+}
+</code></pre></div></details>
+<details><summary>IRProcessor.hlo_opt_pass</summary>
+<p><code>createHloOptPipeline</code></p>
+</details>
+<details><summary>IRProcessor.ait_opt_pass</summary>
+<p>指定一部分op走ait，这个函数实现对应的逻辑。</p>
+</details>
+<hr>
+<h1 id="runtime">Runtime</h1>
+<h2 id="runtime-python-interface">runtime python interface</h2>
+<details><summary>brt py interface</summary>
+<p><code>byre</code> dialect 是 runtime 与 compiler 的交互对象。byteir 的 <code>Session</code> 对象用于管理 byre 对象的加载、执行、释放，<code>RequestContext</code> 对象则用于bind byre执行所需要的 <code>input/output</code> 等ctx。<code>brt</code>对外提供 python interface 时封装了 <code>Session</code>和<code>ReqeustContextWithSession</code>两个pyclass，其中：</p>
+<ul>
+<li><code>Session</code> 几乎是封装了 <code>Session</code> cpp class 的一些 interface，如 <code>load</code> method 用于加载模型文件（byre）；另外增加了 <code>new_request_context</code> 方法，用于创建并获取 <code>ReqeustContextWithSession</code> 对象。</li>
+<li><code>ReqeustContextWithSession</code> 包含了 <code>Session</code> 以及 <code>RequestContext</code> 两个对象。比较困惑的是只暴露 <code>ReqeustContextWithSession</code> 不就可以了吗，为什么还需要把 <code>Seesion</code> 也暴露出去，因为后者作为成员对象被包含在前者内部了。</li>
+</ul>
+<p>几个常用的 method：</p>
+<ul>
+<li>
+<p><code>Session.load</code>
+从文件中加载模型，创建并初始化 execution_plan。其中落盘的模型文件（byre）可以通过byre设计的格式进行序列化，如果序列化成MLIR的 bytecode 格式，load 方法会根据文件格式去对byre对象进行反序列化。最终加载到RAM中的是mlir的 ModuleOP 对象。</p>
+</li>
+<li>
+<p><code>ReqeustContextWithSession.bind_arg</code>
+实际调用的是 <code>RequestContext::BindArg</code> 方法。将buffer 指针 bind 到 ctx 中。实现如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Cpp" data-lang="Cpp"><span style="color:#0b0;font-weight:bold">void</span> BRTInferenceExecutionFrame<span style="color:#666">::</span>BindArg(size_t idx, <span style="color:#a2f;font-weight:bold">const</span> <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>ptr) {
+    <span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> idx <span style="color:#666">-</span> info_.weights.size();
+
+    <span style="color:#080;font-style:italic">// if allocated, free it
+</span><span style="color:#080;font-style:italic"></span>    <span style="color:#a2f;font-weight:bold">if</span> (ctx_.is_io_allocated[i]) {
+        ctx_.is_io_allocated[i] <span style="color:#666">=</span> <span style="color:#a2f">false</span>;
+        <span style="color:#a2f;font-weight:bold">auto</span> allocator <span style="color:#666">=</span> info_.weight_and_ios_allocators[idx];
+        allocator<span style="color:#666">-&gt;</span>Free(ctx_.weights_and_ios[idx]);
+    }
+
+    ctx_.weights_and_ios[idx] <span style="color:#666">=</span> <span style="color:#a2f;font-weight:bold">const_cast</span><span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*&gt;</span>(ptr);
+}
+</code></pre></div><p><code>bind_arg</code> 参数中的 offset 是指当前bind第几个 arg，而不是指 ptr 的偏移。</p>
+</li>
+<li>
+<p><code>ReqeustContextWithSession.finish_io_binding</code>
+<code>ctx</code> 中管理所有tensor（buffer），<code>bind_arg</code> 方法 bind <code>input/output</code>，<code>finish_io_binding</code> 则为 weights 分配buffer。第一眼看到这个函数名以为是前面的bind是async的，需要在这里sync一下。</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#0b0;font-weight:bold">void</span> BRTInferenceExecutionFrame<span style="color:#666">::</span>FinishIOBinding() {
+    size_t bound <span style="color:#666">=</span> info_.weights.size() <span style="color:#666">+</span> info_.graph_info.io_count;
+
+    <span style="color:#080;font-style:italic">// alloc inputs/outputs for non-binding inputs/outputs
+</span><span style="color:#080;font-style:italic"></span>    size_t arg_idx <span style="color:#666">=</span> <span style="color:#666">0</span>;
+    <span style="color:#a2f;font-weight:bold">for</span> (size_t i <span style="color:#666">=</span> info_.weights.size(); i <span style="color:#666">&lt;</span> bound; <span style="color:#666">++</span>i, <span style="color:#666">++</span>arg_idx) {
+        <span style="color:#a2f;font-weight:bold">if</span> (ctx_.weights_and_ios[i] <span style="color:#666">==</span> <span style="color:#a2f;font-weight:bold">nullptr</span>) {
+        ctx_.is_io_allocated[arg_idx] <span style="color:#666">=</span> <span style="color:#a2f">true</span>;
+        <span style="color:#a2f;font-weight:bold">auto</span> allocator <span style="color:#666">=</span> info_.weight_and_ios_allocators[i];
+        ctx_.weights_and_ios[i] <span style="color:#666">=</span> allocator<span style="color:#666">-&gt;</span>Alloc(GetBytes(i));
+        }
+    }
+}
+</code></pre></div></li>
+<li>
+<p><code>ReqeustContextWithSession.sync</code></p>
+</li>
+<li>
+<p><code>ReqeustContextWithSession.run</code></p>
+<blockquote>
+<p>Run a model for a given RequestContext.</p>
+</blockquote>
+<p>实际调用的是不同 backend 的特定 execution_plan 对象：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Cpp" data-lang="Cpp">common<span style="color:#666">::</span>Status Session<span style="color:#666">::</span>Run(RequestContext <span style="color:#666">&amp;</span>request) {
+<span style="color:#080;font-style:italic">// Create ExecutionContext
+</span><span style="color:#080;font-style:italic"></span>ExecutionContext <span style="color:#00a000">ctx</span>(request.frame_.get(), request.wq_.get(),
+                    execution_plan_<span style="color:#666">-&gt;</span>GetFrameStateInfo(),
+                    request.events_.get());
+
+<span style="color:#a2f;font-weight:bold">using</span> State <span style="color:#666">=</span> ExecutionFrame<span style="color:#666">::</span>InternalState;
+Status status <span style="color:#666">=</span>
+    request.frame_<span style="color:#666">-&gt;</span>GetIStateTransition()
+        .Edge(State<span style="color:#666">::</span>BeforePrologue, State<span style="color:#666">::</span>MainLoop,
+                [<span style="color:#666">&amp;</span>] { <span style="color:#a2f;font-weight:bold">return</span> execution_plan_<span style="color:#666">-&gt;</span>ProloguePerFrame(ctx); })
+        .Invariant(State<span style="color:#666">::</span>MainLoop)
+        .Apply();
+
+<span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>status.IsOK()) {
+    <span style="color:#a2f;font-weight:bold">return</span> status;
+}
+
+<span style="color:#a2f;font-weight:bold">return</span> request.frame_<span style="color:#666">-&gt;</span>GetIStateTransition()
+    .Edge(State<span style="color:#666">::</span>MainLoop, State<span style="color:#666">::</span>MainLoop,
+            [<span style="color:#666">&amp;</span>] { <span style="color:#a2f;font-weight:bold">return</span> execution_plan_<span style="color:#666">-&gt;</span>Run(ctx); })
+    .Apply();
+}
+</code></pre></div><p><code>ProloguePerFrame</code> 在每个 frame 执行前 执行一次，<code>StaticBRTExecutionPlan::ProloguePerFrame</code> 实现如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Cpp" data-lang="Cpp">common<span style="color:#666">::</span>Status
+StaticBRTExecutionPlan<span style="color:#666">::</span>ProloguePerFrame(<span style="color:#a2f;font-weight:bold">const</span> ExecutionContext <span style="color:#666">&amp;</span>context) {
+<span style="color:#080;font-style:italic">// processes
+</span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#a0a000">op</span> : op_prologue_per_frame_) {
+    common<span style="color:#666">::</span>Status status <span style="color:#666">=</span> op<span style="color:#666">-&gt;</span>ProloguePerFrame(context);
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>status.IsOK()) {
+    <span style="color:#a2f;font-weight:bold">return</span> status;
+    }
+}
+<span style="color:#a2f;font-weight:bold">return</span> common<span style="color:#666">::</span>Status<span style="color:#666">::</span>OK();
+}
+</code></pre></div><p>为每个 op 执行前处理。如 <code>ait</code>的 <code>AITOpKernel</code> 需要在执行前准备 ait 的 runner。
+<code>ExecutionPlan::Run</code> 先执行 shape kernel，然后分配中间内存，最后按拓扑序执行每个计算类型的op的run成员方法（OpKernel派生类的Run method。不同 backend 的 providers 实现并注册了各自的 op及其 RunImpl 方法，<code>ExecutionPlan::Run</code>实际调用到的则是这类 <code>RunImpl</code>）。<code>cuda</code> backend 的 <code>Add</code> op 的实现如下：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Cpp" data-lang="Cpp"><span style="color:#a2f;font-weight:bold">template</span> <span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> T<span style="color:#666">&gt;</span>
+common<span style="color:#666">::</span>Status Add<span style="color:#666">&lt;</span>T<span style="color:#666">&gt;::</span>RunImpl(<span style="color:#a2f;font-weight:bold">const</span> ExecutionContext <span style="color:#666">&amp;</span>ctx) {
+    <span style="color:#a2f;font-weight:bold">auto</span> tensor <span style="color:#666">=</span> GetMLIRValueFromOpArgIndex(info_, <span style="color:#666">0</span>);
+    <span style="color:#a2f;font-weight:bold">auto</span> shape <span style="color:#666">=</span> brt<span style="color:#666">::</span>ir<span style="color:#666">::</span>GetStaticShape(tensor);
+    <span style="color:#a2f;font-weight:bold">auto</span> maybeN <span style="color:#666">=</span> LinearizedStaticShape(shape.value());
+
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#666">!</span>maybeN.has_value()) {
+        <span style="color:#a2f;font-weight:bold">return</span> <span style="color:#00a000">Status</span>(BRT, FAIL, <span style="color:#b44">&#34;not supported shape&#34;</span>);
+    }
+    <span style="color:#0b0;font-weight:bold">int64_t</span> <span style="color:#666">&amp;</span>n <span style="color:#666">=</span> maybeN.value();
+
+    <span style="color:#a2f;font-weight:bold">auto</span> p <span style="color:#666">=</span> MakeCUDAGridAndBlock(n);
+    size_t dyn_shared_size <span style="color:#666">=</span> <span style="color:#666">0</span>;
+
+    <span style="color:#080;font-style:italic">// TODO move the following to util
+</span><span style="color:#080;font-style:italic"></span>    std<span style="color:#666">::</span>vector<span style="color:#666">&lt;</span><span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*&gt;</span> args;
+    args.push_back(<span style="color:#666">&amp;</span>p.first);         <span style="color:#080;font-style:italic">// grid
+</span><span style="color:#080;font-style:italic"></span>    args.push_back(<span style="color:#666">&amp;</span>p.second);        <span style="color:#080;font-style:italic">// block
+</span><span style="color:#080;font-style:italic"></span>    args.push_back(<span style="color:#666">&amp;</span>dyn_shared_size); <span style="color:#080;font-style:italic">// dyn_shared_size
+</span><span style="color:#080;font-style:italic"></span>
+    <span style="color:#a2f;font-weight:bold">auto</span> num_arg <span style="color:#666">=</span> GetOpArgNum(info_);
+    <span style="color:#080;font-style:italic">// ptrs is used to make sure args still alive before AddTask is called
+</span><span style="color:#080;font-style:italic"></span>    std<span style="color:#666">::</span>vector<span style="color:#666">&lt;</span>AsyncValueRef<span style="color:#666">&gt;</span> ptrs(num_arg);
+    <span style="color:#a2f;font-weight:bold">for</span> (<span style="color:#0b0;font-weight:bold">unsigned</span> <span style="color:#0b0;font-weight:bold">int</span> i <span style="color:#666">=</span> <span style="color:#666">0</span>; i <span style="color:#666">&lt;</span> num_arg; <span style="color:#666">++</span>i) {
+        <span style="color:#a2f;font-weight:bold">auto</span> tensor_id <span style="color:#666">=</span> GetTensorIndexFromOpArgIndex(info_, i);
+        ptrs[i] <span style="color:#666">=</span> ctx.exec_frame<span style="color:#666">-&gt;</span>GetAsyncValueRef(tensor_id);
+        args.push_back(<span style="color:#666">&amp;</span>ptrs[i]);
+    }
+
+    args.push_back(<span style="color:#666">&amp;</span>n); <span style="color:#080;font-style:italic">// n
+</span><span style="color:#080;font-style:italic"></span>    ctx.work_queue<span style="color:#666">-&gt;</span>AddEventWait(info_.GetOperation(), info_.GetDependency());
+    <span style="color:#a2f;font-weight:bold">return</span> ctx.work_queue<span style="color:#666">-&gt;</span>AddTask(<span style="color:#666">0</span>, (<span style="color:#0b0;font-weight:bold">void</span> <span style="color:#666">*</span>)add_kernel<span style="color:#666">&lt;</span>T<span style="color:#666">&gt;</span>, args.data());
+}
+</code></pre></div><p>并没有实际立即执行这个 kernel，而是将其封装成 callable 对象添加到 <strong>work queue</strong> 中了。这为异步执行提供了潜力。而为 async run 插入同步指令的基础设施如下述。byteir 为 cuda backend 定义了如下的 task type：</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Cpp" data-lang="Cpp"><span style="color:#a2f;font-weight:bold">enum</span> <span style="color:#00f">CUDATaskType</span> <span style="color:#666">:</span> <span style="color:#0b0;font-weight:bold">int</span> {
+    kCompute <span style="color:#666">=</span> <span style="color:#666">0</span>,
+    kH2D <span style="color:#666">=</span> <span style="color:#666">1</span>,
+    kD2H <span style="color:#666">=</span> <span style="color:#666">2</span>,
+    kRecordEvent <span style="color:#666">=</span> <span style="color:#666">3</span>,
+    kWaitEvent <span style="color:#666">=</span> <span style="color:#666">4</span>,
+    kComputeDrv <span style="color:#666">=</span> <span style="color:#666">5</span>,
+    kD2D <span style="color:#666">=</span> <span style="color:#666">6</span>,
+};
+</code></pre></div><p>其中<code>kRecordEvent</code>和<code>kWaitEvent</code>则是用于插入同步指令。不同的 <strong>work queue</strong> 可以根据需要使用这些指令。byteir 的 cuda backend 目前只实现了 <code>CUDASingleStreamWorkQueue</code> <code>CUDAOneComputeTwoTransferWorkQueue</code> <code>CUDAExternalStreamWorkQueue</code> 这三类 work queue。第一个和第三个是 single stream的，所以 computed kernel 不需要插入复杂的 sync 指令，memcpy 前后根据 data-dependency 插入即可。第二个 work queue 是设计成三个 stream 共同 work，一个用于 compute，两个负责前后的内存搬移。所以 byteir 目前的 work queue 没有为 multistream 实现非常复杂的方案。single stream 的 work queue 即是最 naive 的按照拓扑序执行各个 task。</p>
+</li>
+</ul>
+</details>
+<p>Byteir Runtime workflow:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text">
+</code></pre></div><p>Byteir Runtime component:</p>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text">                       |---------|
+                       | Session |
+                       |---------|
+                      /      |      \
+                    /        |         \
+                  /          |            \
+                /            |               \
+     |----------|      |---------------|     |--------|
+     | IRHandle |    / | ExecutionPlan |     | Device |
+     |----------|   /  |---------------|     |--------|  
+       |           |      |          |            |
+       |           |      |          |            |
+       |           |   |-----------| |       |----------|
+ |---------------| |   |  Invokes  | |       |DeviceType|
+ |    MLIRCTX    | |   | OpKernels | |       | DeviceId |
+ |DialectRegistry| |   |-----------| |       |----------|
+ |    ModuleOp   | |                 v
+ |---------------| |     |-------------|
+                   |     | Memory Plan |
+                    \    |-------------|
+                     \
+                      \
+                       \
+                        \
+                         v
+                         |----------------|
+                         | RequestContext |
+                         |----------------|
+                        /        |         \
+                       /         |          \
+         |------------|  |----------------|  |-----------|
+         | ThreadPool |  | ExecutionFrame |  | WorkQueue |
+         |------------|  |----------------|  |-----------|
+                                 |                  |
+                                 v                  v
+                         |------------------|  |-------------------------|
+                         |Holds all tensors:|  |   CUDAStreamWorkQueue   |
+                         |inputs            |  |CUDAMultiStreamWorkQueue |
+                         |outputs           |  |CPUSingleThreadWorkQueue |
+                         |constant          |  | CPUMultiThreadWorkQueue |
+                         |      ...         |  |-------------------------|
+
+</code></pre></div><p><p class="markdown-image">
+  <img src="/images/step-into-byteir-runtime-component.PNG" alt="byteir runtime"  />
+</p></p>
+<hr>
+
+    </div>
+
+    
+        <div class="tags">
+            
+                <a href="https://yellowhch.github.io/tags/byteir">ByteIR</a>
+            
+                <a href="https://yellowhch.github.io/tags/mlir">MLIR</a>
+            
+                <a href="https://yellowhch.github.io/tags/ai-compiler">ai compiler</a>
+            
+        </div>
+    
+    
+    
+
+</section>
+
+
+    </main>
+    
+    <footer id="footer">
+    
+        <div id="social">
+
+
+    <a class="symbol" href="https://github.com/YellowHCH/" rel="me" target="_blank">
+        
+        <svg fill="#bbbbbb" width="28" height="28"  viewBox="0 0 72 72" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    
+    <title>Github</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Social-Icons---Rounded-Black" transform="translate(-264.000000, -939.000000)">
+            <g id="Github" transform="translate(264.000000, 939.000000)">
+                <path d="M8,72 L64,72 C68.418278,72 72,68.418278 72,64 L72,8 C72,3.581722 68.418278,-8.11624501e-16 64,0 L8,0 C3.581722,8.11624501e-16 -5.41083001e-16,3.581722 0,8 L0,64 C5.41083001e-16,68.418278 3.581722,72 8,72 Z" id="Rounded" fill="#bbbbbb"></path>
+                <path d="M35.9985,13 C22.746,13 12,23.7870921 12,37.096644 C12,47.7406712 18.876,56.7718301 28.4145,59.9584121 C29.6145,60.1797862 30.0525,59.4358488 30.0525,58.7973276 C30.0525,58.2250681 30.0315,56.7100863 30.0195,54.6996482 C23.343,56.1558981 21.9345,51.4693938 21.9345,51.4693938 C20.844,48.6864054 19.2705,47.9454799 19.2705,47.9454799 C17.091,46.4500754 19.4355,46.4801943 19.4355,46.4801943 C21.843,46.6503662 23.1105,48.9634994 23.1105,48.9634994 C25.2525,52.6455377 28.728,51.5823398 30.096,50.9649018 C30.3135,49.4077535 30.9345,48.3460615 31.62,47.7436831 C26.2905,47.1352808 20.688,45.0691228 20.688,35.8361671 C20.688,33.2052792 21.6225,31.0547881 23.1585,29.3696344 C22.911,28.7597262 22.0875,26.3110578 23.3925,22.9934585 C23.3925,22.9934585 25.4085,22.3459017 29.9925,25.4632101 C31.908,24.9285993 33.96,24.6620468 36.0015,24.6515052 C38.04,24.6620468 40.0935,24.9285993 42.0105,25.4632101 C46.5915,22.3459017 48.603,22.9934585 48.603,22.9934585 C49.9125,26.3110578 49.089,28.7597262 48.8415,29.3696344 C50.3805,31.0547881 51.309,33.2052792 51.309,35.8361671 C51.309,45.0917119 45.6975,47.1292571 40.3515,47.7256117 C41.2125,48.4695491 41.9805,49.9393525 41.9805,52.1877301 C41.9805,55.4089489 41.9505,58.0067059 41.9505,58.7973276 C41.9505,59.4418726 42.3825,60.1918338 43.6005,59.9554002 C53.13,56.7627944 60,47.7376593 60,37.096644 C60,23.7870921 49.254,13 35.9985,13" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>
+    </a>
+
+
+</div>
+
+    
+
+    <div class="copyright">
+    
+       © Copyright 
+       2024 
+       <span class="split">
+        <svg fill="#bbbbbb" width="15" height="15" version="1.1" id="heart-15" xmlns="http://www.w3.org/2000/svg" width="15px" height="15px" viewBox="0 0 15 15">
+  <path d="M13.91,6.75c-1.17,2.25-4.3,5.31-6.07,6.94c-0.1903,0.1718-0.4797,0.1718-0.67,0C5.39,12.06,2.26,9,1.09,6.75&#xA;&#x9;C-1.48,1.8,5-1.5,7.5,3.45C10-1.5,16.48,1.8,13.91,6.75z"/>
+</svg>
+       </span>
+       ChenhuiHuang
+    
+    </div>
+
+    
+</footer>
+
+
+
+  </body>
+</html>

@@ -81,9 +81,9 @@
 <p>triton compiler 负责CTA内部的线程排布以及内存排布，CTA外部（即如何排布CTA）是由使用者去tune的。这篇triton的教程介绍了如何提高基于GPU 缓存的data reuse。
 在GPU架构中，L1 cache是SM内的，L2 cache是全局的，所以基于L1的优化是triton compiler的事情，L2是用户去考虑的。
 基于triton的mm的伪代码 实现如下：</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Do in parallel</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Do in parallel</span>
 <span style="color:#a2f;font-weight:bold">for</span> m <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, M, BLOCK_SIZE_M):
-  <span style="color:#080;font-style:italic"># Do in parallel</span>
+  <span style="color:#080;font-style:italic"># Do in parallel</span>
   <span style="color:#a2f;font-weight:bold">for</span> n <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, N, BLOCK_SIZE_N):
     acc <span style="color:#666">=</span> zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype<span style="color:#666">=</span>float32)
     <span style="color:#a2f;font-weight:bold">for</span> k <span style="color:#a2f;font-weight:bold">in</span> <span style="color:#a2f">range</span>(<span style="color:#666">0</span>, K, BLOCK_SIZE_K):
@@ -110,24 +110,24 @@ triton教程介绍的是名为 <strong>Grouped ordering</strong> 的排布方式
 </p></p>
 <p>如果物理上每个时刻有9个SM并发，那么此时从A和B中读的数据都会被reuse 2次，即读block的数量减少了2/3，优化成了162/3=54次。
 计算CTA的layout的伪代码如下：</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Program ID</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#080;font-style:italic"># Program ID</span>
 pid <span style="color:#666">=</span> tl<span style="color:#666">.</span>program_id(axis<span style="color:#666">=</span><span style="color:#666">0</span>)
-<span style="color:#080;font-style:italic"># Number of program ids along the M axis</span>
+<span style="color:#080;font-style:italic"># Number of program ids along the M axis</span>
 num_pid_m <span style="color:#666">=</span> tl<span style="color:#666">.</span>cdiv(M, BLOCK_SIZE_M)
-<span style="color:#080;font-style:italic"># Number of programs ids along the N axis</span>
+<span style="color:#080;font-style:italic"># Number of programs ids along the N axis</span>
 num_pid_n <span style="color:#666">=</span> tl<span style="color:#666">.</span>cdiv(N, BLOCK_SIZE_N)
-<span style="color:#080;font-style:italic"># Number of programs in group</span>
+<span style="color:#080;font-style:italic"># Number of programs in group</span>
 num_pid_in_group <span style="color:#666">=</span> GROUP_SIZE_M <span style="color:#666">*</span> num_pid_n
-<span style="color:#080;font-style:italic"># Id of the group this program is in</span>
+<span style="color:#080;font-style:italic"># Id of the group this program is in</span>
 group_id <span style="color:#666">=</span> pid <span style="color:#666">//</span> num_pid_in_group
-<span style="color:#080;font-style:italic"># Row-id of the first program in the group</span>
+<span style="color:#080;font-style:italic"># Row-id of the first program in the group</span>
 first_pid_m <span style="color:#666">=</span> group_id <span style="color:#666">*</span> GROUP_SIZE_M
-<span style="color:#080;font-style:italic"># If `num_pid_m` isn&#39;t divisible by `GROUP_SIZE_M`, the last group is smaller</span>
+<span style="color:#080;font-style:italic"># If `num_pid_m` isn&#39;t divisible by `GROUP_SIZE_M`, the last group is smaller</span>
 group_size_m <span style="color:#666">=</span> <span style="color:#a2f">min</span>(num_pid_m <span style="color:#666">-</span> first_pid_m, GROUP_SIZE_M)
-<span style="color:#080;font-style:italic"># *Within groups*, programs are ordered in a column-major order</span>
-<span style="color:#080;font-style:italic"># Row-id of the program in the *launch grid*</span>
+<span style="color:#080;font-style:italic"># *Within groups*, programs are ordered in a column-major order</span>
+<span style="color:#080;font-style:italic"># Row-id of the program in the *launch grid*</span>
 pid_m <span style="color:#666">=</span> first_pid_m <span style="color:#666">+</span> (pid <span style="color:#666">%</span> group_size_m)
-<span style="color:#080;font-style:italic"># Col-id of the program in the *launch grid*</span>
+<span style="color:#080;font-style:italic"># Col-id of the program in the *launch grid*</span>
 pid_n <span style="color:#666">=</span> (pid <span style="color:#666">%</span> num_pid_in_group) <span style="color:#666">//</span> group_size_m
 </code></pre></div><p>每GROUP_SIZE_M行为一个Group，每个group内是列主序的。因此layout要先计算当前pid映射到哪个group，然后计算在group中的位置。其中，超参GROUP_SIZE_M需要tune，显然这个参数与L2 cache的size以及SM数量有关。triton教程中将GROUP_SIZE_M设置成8，A100有108个SM，因此预设的是每次SMs计算一个8x?的blocks。按理说应该计算sqrt(num_sm)xsqrt(num_sm)比较合适，约等于10x10，所以将GROUP_SIZE_M设置成8也算合理。</p>
 

@@ -6,10 +6,19 @@
     <description>Recent content on ch_huang</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 04 Jan 2024 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 23 Mar 2024 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="https://yellowhch.github.io/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Step into ByteIR</title>
+      <link>https://yellowhch.github.io/post/step-into-byteir/</link>
+      <pubDate>Sat, 23 Mar 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/step-into-byteir/</guid>
+      <description>Draft Notes for byteir code review [TOC] Frontend Byteir支持三种前端输入，分别是onnx，tf，torch，最终收敛到stablehlo dialect。 frontends/ ├── README.md ├──</description>
+    </item>
     
     <item>
       <title>C&#43;&#43;17 new feature</title>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>ByteIR on ch_huang</title>
+    <link>https://yellowhch.github.io/tags/byteir/</link>
+    <description>Recent content in ByteIR on ch_huang</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 23 Mar 2024 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://yellowhch.github.io/tags/byteir/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Step into ByteIR</title>
+      <link>https://yellowhch.github.io/post/step-into-byteir/</link>
+      <pubDate>Sat, 23 Mar 2024 00:00:00 +0000</pubDate>
+      
+      <guid>https://yellowhch.github.io/post/step-into-byteir/</guid>
+      <description>Draft Notes for byteir code review [TOC] Frontend Byteir支持三种前端输入，分别是onnx，tf，torch，最终收敛到stablehlo dialect。 frontends/ ├── README.md ├──</description>
+    </item>
+    
+  </channel>
+</rss>

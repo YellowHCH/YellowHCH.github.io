@@ -130,7 +130,7 @@ Like a reference, a structured binding is an alias to an existing object. Unlike
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_array -std=c++17 bind_array.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_array -std=gnu++17 bind_array.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_array</span>() {
   <span style="color:#0b0;font-weight:bold">int</span> a[<span style="color:#666">2</span>] <span style="color:#666">=</span> {<span style="color:#666">1</span>, <span style="color:#666">2</span>};
@@ -161,8 +161,8 @@ xr,yr<span style="color:#666">={</span>1,2<span style="color:#666">}</span>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_tuple -std=c++17 bind_tuple.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_tuple -std=gnu++17 bind_tuple.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">foo_bind_tuple</span>() {
   <span style="color:#0b0;font-weight:bold">float</span> x{<span style="color:#666">1.23</span>};
@@ -208,7 +208,7 @@ c:type<span style="color:#666">(</span>int<span style="color:#666">)</span>, val
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_data_member -std=c++17 bind_data_member.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_data_member -std=gnu++17 bind_data_member.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">S</span> {
   <span style="color:#a2f;font-weight:bold">mutable</span> <span style="color:#0b0;font-weight:bold">int</span> <span style="color:#a0a000">x1</span> : <span style="color:#666">2</span>; <span style="color:#080;font-style:italic">// mutable data member, could be modified by const
@@ -271,9 +271,9 @@ x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_map -std=c++17 -lstdc++ bind_map.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_map -std=gnu++17 -lstdc++ bind_map.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;unordered_map&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;unordered_map&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">Key</span> {
   <span style="color:#0b0;font-weight:bold">int</span> _key;
@@ -311,13 +311,13 @@ x1:1,addr:0x7fffffffe2b0,  y1:2.300000, addr:0x7fffffffe2b8
 </span><span style="color:#080;font-style:italic">NOTE: try_emplace 是C++17的新特性，返回一个tuple，其中第二个表示是否成功。
 </span><span style="color:#080;font-style:italic">*/</span>
 <span style="color:#080">#define insert_map(seq)                                                        \
-</span><span style="color:#080">  do {                                                                         \
-</span><span style="color:#080">    if (const auto &amp;[iter, success] = _map.try_emplace(seq, #seq &#34;_val&#34;);      \
-</span><span style="color:#080">        !success) {                                                            \
-</span><span style="color:#080">      printf(&#34;emplace fail\n&#34;);                                                \
-</span><span style="color:#080">    }                                                                          \
-</span><span style="color:#080">  } while (0)
-</span><span style="color:#080"></span>
+</span><span style="color:#080"></span>  <span style="color:#a2f;font-weight:bold">do</span> {                                                                         <span style="">\</span>
+    <span style="color:#a2f;font-weight:bold">if</span> (<span style="color:#a2f;font-weight:bold">const</span> <span style="color:#a2f;font-weight:bold">auto</span> <span style="color:#666">&amp;</span>[iter, success] <span style="color:#666">=</span> _map.try_emplace(seq, <span style="">#</span>seq <span style="color:#b44">&#34;_val&#34;</span>);      <span style="">\</span>
+        <span style="color:#666">!</span>success) {                                                            <span style="">\</span>
+      printf(<span style="color:#b44">&#34;emplace fail</span><span style="color:#b62;font-weight:bold">\n</span><span style="color:#b44">&#34;</span>);                                                <span style="">\</span>
+    }                                                                          <span style="">\</span>
+  } <span style="color:#a2f;font-weight:bold">while</span> (<span style="color:#666">0</span>)
+
   insert_map(<span style="color:#666">10</span>);
   insert_map(<span style="color:#666">11</span>);
   insert_map(<span style="color:#666">12</span>);
@@ -346,8 +346,8 @@ k:2, v:2_val
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang -o bind_captured_by_lambda -std=c++17 bind_captured_by_lambda.cc
 </span><span style="color:#080;font-style:italic">// g++ -o bind_captured_by_lambda -std=gnu++17 bind_captured_by_lambda.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#a2f;font-weight:bold">struct</span> <span style="color:#00f">S</span> {
   <span style="color:#0b0;font-weight:bold">int</span> p{<span style="color:#666">6</span>}, q{<span style="color:#666">7</span>};
@@ -365,9 +365,9 @@ k:2, v:2_val
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o tuple_implicit_infer -std=c++17 tuple_implicit_infer.cc
 </span><span style="color:#080;font-style:italic">// g++ -o tuple_implicit_infer -std=gnu++17 tuple_implicit_infer.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;tuple&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#0b0;font-weight:bold">void</span> <span style="color:#00a000">before_cpp17</span>() {
   <span style="color:#0b0;font-weight:bold">int</span> a0 <span style="color:#666">=</span> <span style="color:#666">123</span>;
@@ -403,7 +403,7 @@ k:2, v:2_val
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o if_constexpr -std=c++17 if_constexpr.cc
 </span><span style="color:#080;font-style:italic">// g++ -o if_constexpr -std=gnu++17 if_constexpr.cc
 </span><span style="color:#080;font-style:italic"></span>
-<span style="color:#080">#include</span> <span style="color:#080">&lt;type_traits&gt;</span><span style="color:#080">
+<span style="color:#080">#include</span> <span style="color:#080">&lt;type_traits&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#080;font-style:italic">// 通过 `std::is_pointer_v`在编译期间判断类型，选择不同分支
 </span><span style="color:#080;font-style:italic"></span><span style="color:#a2f;font-weight:bold">template</span><span style="color:#666">&lt;</span><span style="color:#a2f;font-weight:bold">typename</span> T<span style="color:#666">&gt;</span>
@@ -517,10 +517,10 @@ std<span style="color:#666">::</span>unique_lock lock(mutex_);<span style="color
 <p><code>std::string_view</code>对字符串不具有所有权，成员对象有字符串指针地址和字符串size。其成员函数<code>substr</code>等是在做指针偏移，不涉及字符串拷贝，所以效率更高。</p>
 <div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080;font-style:italic">// clang++ -o string_view -std=c++17 string_view.cc
 </span><span style="color:#080;font-style:italic">// g++ -o string_view -std=gnu++17 string_view.cc
-</span><span style="color:#080;font-style:italic"></span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string_view&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
+</span><span style="color:#080;font-style:italic"></span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string_view&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;cstdio&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span>
 <span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
 {
@@ -551,8 +551,8 @@ sub str addr:0x7fffffffe284, str size:4
 </code></pre></div><h2 id="6-stdanyhttpsencppreferencecomwcpputilityany">6. <a href="https://en.cppreference.com/w/cpp/utility/any" target="_blank" rel="noopener">std::any</a></h2>
 <p>类似 <code>void *</code>的含义，但<code>any</code>会记录类型，在<code>std::any_cast</code>时做类型检查，在对象释放时根据类型进行析构。</p>
 <p>case study:</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;any&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;any&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span> 
 <span style="color:#0b0;font-weight:bold">int</span> <span style="color:#00a000">main</span>()
 {
@@ -593,21 +593,21 @@ sub str addr:0x7fffffffe284, str size:4
     std<span style="color:#666">::</span>cout <span style="color:#666">&lt;&lt;</span> <span style="color:#666">*</span>i <span style="color:#666">&lt;&lt;</span> <span style="color:#b44">&#39;\n&#39;</span>;
 }
 </code></pre></div><p>output:</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">i: <span style="color:#666">1</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">i: 1
 d: 3.14
 b: <span style="color:#a2f">true</span>
 cast int to float: bad any_cast
-i: has value <span style="color:#666">2</span>
+i: has value 2
 no value
-<span style="color:#666">3</span>
+3
 </code></pre></div><h2 id="7-stdoptionalhttpsencppreferencecomwcpputilityoptional">7. <a href="https://en.cppreference.com/w/cpp/utility/optional" target="_blank" rel="noopener">std::optional</a></h2>
 <blockquote>
 <p>The class template std::optional manages an optional contained value, i.e. a value that <strong>may or may</strong> not be present.</p>
 </blockquote>
 <p>llvm已经把llvm::optional替换成标准库的实现了. 常用于函数返回值类型。</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;optional&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;optional&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span> 
 <span style="color:#080;font-style:italic">// optional can be used as the return type of a factory that may fail
 </span><span style="color:#080;font-style:italic"></span>std<span style="color:#666">::</span>optional<span style="color:#666">&lt;</span>std<span style="color:#666">::</span>string<span style="color:#666">&gt;</span> create(<span style="color:#0b0;font-weight:bold">bool</span> b)
@@ -650,10 +650,10 @@ create2<span style="color:#666">(</span><span style="color:#a2f">true</span><spa
 </blockquote>
 <p>union结构体中的各个类型可选的，<code>std::variant</code>效果相同，多了一些helper function如<code>holds_alternative</code>,<code>get</code>。
 但是union是所有成员共用内存，variant似乎是每个成员都独有内存。</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
-</span><span style="color:#080">#include</span> <span style="color:#080">&lt;variant&gt;</span><span style="color:#080">
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-C++" data-lang="C++"><span style="color:#080">#include</span> <span style="color:#080">&lt;cassert&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;iostream&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;string&gt;</span><span style="color:#080">
+</span><span style="color:#080">#include</span> <span style="color:#080">&lt;variant&gt;</span><span style="color:#080">
 </span><span style="color:#080"></span> 
 <span style="color:#a2f;font-weight:bold">union</span> <span style="color:#00f">UnionTy</span> {
     <span style="color:#0b0;font-weight:bold">int</span> v0;
@@ -701,8 +701,8 @@ create2<span style="color:#666">(</span><span style="color:#a2f">true</span><spa
 </span><span style="color:#080;font-style:italic"></span>
 }
 </code></pre></div><p>output:</p>
-<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">size of UnionTy: <span style="color:#666">8</span>
-size of variant&lt;int, float, double&gt;: <span style="color:#666">16</span>
+<div class="highlight"><pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">size of UnionTy: 8
+size of variant&lt;int, float, double&gt;: 16
 std::get: wrong index <span style="color:#a2f;font-weight:bold">for</span> variant
 </code></pre></div>
     </div>
